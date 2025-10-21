@@ -1,0 +1,9 @@
+# Plan: FastMCP Server for Marketo Integration
+
+1. **Project Setup:** Initialize a Python FastMCP server project. Install `fastmcp` and `requests`. Prepare Marketo API credentials (client ID, client secret, base URL) as environment variables.
+2. **FastMCP Server Initialization:** In `server.py`, create a FastMCP instance (e.g. name it "MarketoMCPServer").
+3. **Marketo Authentication:** Implement a helper function to obtain an OAuth access token from Marketo using the client ID and secret (via the Identity URL).
+4. **MCP Resource Method:** Define a FastMCP **resource** (read-only function) that fetches data from a Marketo endpoint. For example, fetch recent lead activities by lead ID.
+5. **Marketo API Call:** Inside the resource, use the access token to call Marketo’s REST API (Activity or Company endpoint) and return the JSON data.
+6. **FastMCP Configuration:** Configure the server (if needed) so an MCP client can connect. Use environment variables for credentials in config or OS env.
+7. **Testing:** Document how to run the FastMCP server locally and test it (via a FastMCP client or directly in Cursor with an AI agent). Ensure the Marketo data is retrieved successfully.
