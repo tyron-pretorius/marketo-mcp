@@ -1591,39 +1591,6 @@ if FASTMCP_AVAILABLE:
             logger.error(f"Error in MCP tool: {e}")
             return {"error": f"Failed to clone program: {str(e)}"}
 
-    @mcp.tool
-    def delete_program(program_id: int) -> Dict[str, Any]:
-        """
-        Delete a program from Marketo.
-        
-        Args:
-            program_id: The ID of the program to delete
-            
-        Returns:
-            Dict[str, Any]: Deletion confirmation data
-        """
-        try:
-            token = get_marketo_token()
-            if not token:
-                return {"error": "Failed to obtain access token"}
-            
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            # Delete program
-            delete_url = f"{MARKETO_BASE_URL}/rest/asset/v1/program/{program_id}/delete.json"
-            
-            logger.info(f"Deleting program ID: {program_id}")
-            response = requests.post(delete_url, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            logger.info(f"Successfully deleted program ID: {program_id}")
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error in MCP tool: {e}")
-            return {"error": f"Failed to delete program: {str(e)}"}
 
     @mcp.tool
     def approve_email_program(program_id: int) -> Dict[str, Any]:
@@ -1933,58 +1900,6 @@ if FASTMCP_AVAILABLE:
             logger.error(f"Error in MCP tool: {e}")
             return {"error": f"Failed to update token: {str(e)}"}
 
-    @mcp.tool
-    def delete_token(folder_id: int, name: str, token_type: str, 
-                    folder_type: str = "Folder") -> Dict[str, Any]:
-        """
-        Delete a token from Marketo.
-        
-        Args:
-            folder_id: The Marketo folder or program ID where the token exists
-            name: The name of the token to delete
-            token_type: The data type of the token - "date", "number", "rich text", "score", "sfdc campaign", or "text"
-            folder_type: The type of folder - "Folder" or "Program" (default: "Folder")
-            
-        Returns:
-            Dict[str, Any]: Deletion confirmation data
-        """
-        try:
-            token = get_marketo_token()
-            if not token:
-                return {"error": "Failed to obtain access token"}
-            
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
-            
-            # Validate token type
-            valid_types = ["date", "number", "rich text", "score", "sfdc campaign", "text"]
-            if token_type not in valid_types:
-                return {"error": f"Invalid token type. Must be one of: {', '.join(valid_types)}"}
-            
-            # Build form data
-            form_data = {
-                "name": name,
-                "type": token_type,
-                "folderType": folder_type
-            }
-            
-            # Delete token
-            delete_url = f"{MARKETO_BASE_URL}/rest/asset/v1/folder/{folder_id}/tokens/delete.json"
-            
-            logger.info(f"Deleting token '{name}' of type '{token_type}' from {folder_type} {folder_id}")
-            response = requests.post(delete_url, headers=headers, data=form_data, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            logger.info(f"Successfully deleted token: {name}")
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error in MCP tool: {e}")
-            return {"error": f"Failed to delete token: {str(e)}"}
 
     # Lead Schema Tools
     @mcp.tool
@@ -2081,7 +1996,6 @@ if __name__ == "__main__":
                 print("   • create_program(name, folder_id, program_type, channel, etc.) - Create new program")
                 print("   • update_program(program_id, name, description, costs, etc.) - Update program")
                 print("   • clone_program(program_id, name, folder_id, description) - Clone program")
-                print("   • delete_program(program_id) - Delete program")
                 print("   • approve_email_program(program_id) - Approve email program")
                 print("   • unapprove_email_program(program_id) - Unapprove email program")
                 print("   • describe_program_members() - Get program member schema and field metadata")
@@ -2089,7 +2003,6 @@ if __name__ == "__main__":
                 print("   • get_tokens_by_folder(folder_id, folder_type) - Get tokens by folder or program ID")
                 print("   • create_token(folder_id, name, token_type, value, folder_type) - Create a new token")
                 print("   • update_token(folder_id, name, token_type, value, folder_type) - Update an existing token")
-                print("   • delete_token(folder_id, name, token_type, folder_type) - Delete a token")
                 print("   • describe_leads() - Get lead field metadata and schema information")
             else:
                 print("\n⚠️  FastMCP not available. Install with: pip install fastmcp")
