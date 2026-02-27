@@ -61,3 +61,4 @@ tmp/
 
 # MCP specific
 *.mcp.log
+test_config.json
