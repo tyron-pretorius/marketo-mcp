@@ -418,6 +418,11 @@ async def run_write_tests(client):
         print("Folder is required for write tests. Skipping.")
         return
 
+    program_type = get_test_var("program_type", "Program type to be created (e.g. 'Default', 'Email', 'Engagement', 'Event'):", required=True)
+    if not program_type:
+        print("Program type is required for program creation. Skipping.")
+        return
+
     # Fetch available channels to help the user choose
     available_channels = await call_tool(client, "get_channels", {})
     channel_list = available_channels.get('result', []) if available_channels else []
@@ -427,11 +432,6 @@ async def run_write_tests(client):
             prog_type = ch.get('applicableProgramType', 'Unknown')
             print(f"    - {ch['name']} (program type: {prog_type})")
         print()
-
-    program_type = get_test_var("program_type", "Program type to be created (e.g. 'Default', 'Email', 'Engagement', 'Event'):", required=True)
-    if not program_type:
-        print("Program type is required for program creation. Skipping.")
-        return
 
     channel = get_test_var("channel", "Program channel to be created:", required=True)
     if not channel:
