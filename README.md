@@ -46,11 +46,37 @@ You can find these in **Marketo Admin > LaunchPoint** (for client ID/secret) and
 
 ### 4. Start the server
 
+There are two server scripts to choose from:
+
+#### `mcp_server.py` — No authentication (for Claude Desktop)
+
 ```bash
 python mcp_server.py
 ```
 
-The server starts on `http://0.0.0.0:8000` using the Streamable HTTP transport. The MCP endpoint is available at `http://localhost:8000/mcp`.
+Use this when connecting from **Claude Desktop**, which only supports OAuth 2.0 authentication for custom connectors. This server has no auth layer, so it should only be exposed on trusted networks or behind a reverse proxy that handles authentication.
+
+#### `mcp_server_auth.py` — Bearer token authentication (for OpenAI and other clients)
+
+```bash
+python mcp_server_auth.py
+```
+
+Use this when connecting from **OpenAI** or any MCP client that supports bearer token authentication. Clients must include the `MCP_API_KEY` value from your `.env` file in every request:
+
+```
+Authorization: Bearer <your-MCP_API_KEY-value>
+```
+
+Add the key to your `.env`:
+
+```
+MCP_API_KEY="your-secret-api-key"
+```
+
+> **Why two servers?** Claude Desktop's custom connector only supports OAuth 2.0 (Client ID / Client Secret). It has no way to send a static bearer token, so `mcp_server_auth.py` cannot be used with Claude Desktop. For Claude Desktop, use `mcp_server.py` instead.
+
+Both servers start on `http://0.0.0.0:8000` using the Streamable HTTP transport. The MCP endpoint is available at `http://localhost:8000/mcp`.
 
 ## Available Tools
 
@@ -182,7 +208,8 @@ Test inputs (email addresses, folder IDs, campaign names, etc.) are saved to `te
 
 ```
 MarketoMCP/
-├── mcp_server.py               # MCP server — registers tools with FastMCP
+├── mcp_server.py               # MCP server — no auth (for Claude Desktop)
+├── mcp_server_auth.py          # MCP server — bearer token auth (for OpenAI and other clients)
 ├── marketo_functions.py         # Marketo REST API wrapper functions
 ├── test_mcp_server.py           # MCP protocol-level test suite
 ├── test_marketo_functions.py    # Direct function test suite

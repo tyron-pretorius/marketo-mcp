@@ -1,12 +1,40 @@
 """
-MCP Server that exposes Marketo functions as tools.
+MCP Server (with bearer token auth) that exposes Marketo functions as tools.
+
+Usage:
+  1. Set MCP_API_KEY in your .env file
+  2. Run: python mcp_server_auth.py
+  3. Clients must send: Authorization: Bearer <MCP_API_KEY>
 """
 
+import os
+import dotenv
 from fastmcp import FastMCP
+from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 import marketo_functions
 
+dotenv.load_dotenv()
+
+# ============================================================================
+# Authentication Setup
+# ============================================================================
+
+_mcp_api_key = os.environ.get("MCP_API_KEY", "")
+
+if not _mcp_api_key:
+    print("WARNING: MCP_API_KEY not set in .env — server will reject all requests.")
+
+auth = StaticTokenVerifier(
+    tokens={
+        _mcp_api_key: {
+            "client_id": "mcp-client",
+            "scopes": ["read", "write"],
+        }
+    }
+)
+
 # Create the MCP server
-mcp = FastMCP("MarketoMCPServer")
+mcp = FastMCP("MarketoMCPServer", auth=auth)
 
 # ============================================================================
 # Activity Tools
@@ -61,6 +89,13 @@ def describe_leads() -> dict:
     """Get lead field metadata and schema information from Marketo."""
     token = marketo_functions.getToken()
     result = marketo_functions.describeLeads(token)
+    return result
+
+@mcp.tool()
+def merge_leads(winning_lead_id: int, losing_lead_ids: list, merge_in_crm: bool = False) -> dict:
+    """Merge duplicate lead records into a winning lead in Marketo. The winning lead retains its data, and losing leads are merged into it."""
+    token = marketo_functions.getToken()
+    result = marketo_functions.mergeLeads(token, winning_lead_id, losing_lead_ids, merge_in_crm)
     return result
 
 # ============================================================================
