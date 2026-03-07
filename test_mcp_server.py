@@ -1,7 +1,7 @@
 """
 Test script for mcp_server.py - calls tools through the MCP protocol.
 Connects to the MCP server running locally on http://localhost:8000/mcp.
-Start the server first: python mcp_server.py
+Start the server first: python mcp_server.py (or python mcp_server_auth.py)
 Run: python test_mcp_server.py
 """
 
@@ -10,8 +10,12 @@ import json
 import sys
 import os
 
+import dotenv
+
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+dotenv.load_dotenv()
 
 from fastmcp import Client
 
@@ -702,19 +706,26 @@ MCP_SERVER_URL = "http://localhost:8000/mcp"
 async def main():
     load_test_config()
 
+    # Check for MCP_API_KEY to authenticate with mcp_server_auth.py
+    mcp_api_key = os.environ.get("MCP_API_KEY")
+
     print("=" * 60)
     print("MCP Server - Tool Test Suite")
     print("=" * 60)
     print(f"\nConnects to the MCP server at {MCP_SERVER_URL}")
-    print("Make sure the server is running: python mcp_server.py")
+    print("Make sure the server is running: python mcp_server.py (or mcp_server_auth.py)")
+    if mcp_api_key:
+        print("Auth: Bearer token from MCP_API_KEY detected")
+    else:
+        print("Auth: None (set MCP_API_KEY in .env for mcp_server_auth.py)")
     print("\n1. Read-only tests (safe, no modifications)")
     print("2. Write-only tests (create, clone, update, delete)")
     print("3. Full tests (read-only + write operations)")
 
     choice = input("\nSelect test mode (1, 2, or 3): ").strip()
 
-    # Connect to the running MCP server
-    client = Client(MCP_SERVER_URL)
+    # Connect to the running MCP server (pass auth if MCP_API_KEY is set)
+    client = Client(MCP_SERVER_URL, auth=mcp_api_key)
 
     print(f"\nConnecting to MCP server: {MCP_SERVER_URL}")
 
