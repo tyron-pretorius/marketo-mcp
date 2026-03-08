@@ -1,3 +1,4 @@
 fastmcp>=2.11,<3
 requests>=2.31
-python-dotenv>=1.0    # optional, if you want .env supporto
+python-dotenv>=1.0    # optional, if you want .env support
+ngrok>=1.4
