@@ -40,6 +40,7 @@ Edit `.env` with your values:
 MARKETO_CLIENT_ID="your-client-id"
 MARKETO_CLIENT_SECRET="your-client-secret"
 MARKETO_BASE_URL="https://your-instance.mktorest.com"
+MCP_API_KEY="your-secret-api-key"
 ```
 
 You can find these in **Marketo Admin > LaunchPoint** (for client ID/secret) and **Admin > Web Services** (for the REST API base URL).
