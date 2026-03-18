@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import time
 import dotenv
 from datetime import datetime, timedelta, timezone
 
@@ -10,9 +11,14 @@ base_url = os.environ.get('MARKETO_BASE_URL')
 client_id = os.environ.get('MARKETO_CLIENT_ID')
 client_secret = os.environ.get('MARKETO_CLIENT_SECRET')
 
+_token_cache = {"access_token": None, "expires_at": 0}
 
-# Get an access token
+
+# Get an access token (cached, refreshes 60s before expiry)
 def getToken():
+    if _token_cache["access_token"] and time.time() < _token_cache["expires_at"]:
+        return _token_cache["access_token"]
+
     response = requests.get(
         base_url + '/identity/oauth/token',
         params={
@@ -23,8 +29,9 @@ def getToken():
         timeout=30
     )
     data = response.json()
-    token = data['access_token']
-    return token
+    _token_cache["access_token"] = data['access_token']
+    _token_cache["expires_at"] = time.time() + data.get('expires_in', 3600) - 60
+    return _token_cache["access_token"]
 
 
 # ============================================================================
