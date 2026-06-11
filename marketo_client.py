@@ -63,11 +63,14 @@ def syncLeads(base_url, token, leads, action="createOrUpdate", lookupField="emai
 def mergeLeads(base_url, token, winningLeadId, losingLeadIds, mergeInCRM=False):
     """Merge losing leads into a winning lead."""
     url = base_url + f'/rest/v1/leads/{winningLeadId}/merge.json'
+    # Marketo rejects this endpoint with 612 "Invalid Content Type" unless a
+    # JSON content type is sent, even though the request has no body.
+    headers = {**_bearer(token), 'Content-Type': 'application/json'}
     params = {
         'leadIds': ','.join(map(str, losingLeadIds)),
         'mergeInCRM': str(mergeInCRM).lower(),
     }
-    response = requests.post(url, headers=_bearer(token), params=params, timeout=30)
+    response = requests.post(url, headers=headers, params=params, timeout=30)
     return response.json()
 
 
