@@ -2,6 +2,103 @@
 
 An MCP (Model Context Protocol) server that exposes Adobe Marketo REST API operations as tools. Built with [FastMCP](https://github.com/jlowin/fastmcp), it allows AI assistants and MCP clients to interact with your Marketo instance.
 
+This repo contains two generations of server:
+
+- **`mcp_server_blended.py` (recommended)** — proxies [Adobe's native Marketo MCP server](https://experienceleague.adobe.com/en/docs/marketo-developer/marketo/mcp-server) for its ~120 tools and adds `custom_*` tools for everything it lacks. See [Blended Server](#blended-server-recommended).
+- **`mcp_server.py` / `mcp_server_auth.py` (legacy)** — standalone servers that implement a subset of Marketo REST operations directly, with credentials in `.env`. See [Legacy Servers](#legacy-servers).
+
+## Blended Server (recommended)
+
+`mcp_server_blended.py` gives you a single MCP endpoint that combines:
+
+1. **Native tools** — every tool from Adobe's native Marketo MCP server (`https://marketo-mcp.adobe.io/mcp`), mirrored live and called via proxy. These keep their exact Adobe names (`browse_forms`, `get_leads_by_filter`, ...).
+2. **Custom tools** — capabilities the native server doesn't offer, called directly against the Marketo REST API from this server. These are all prefixed **`custom_`** and their descriptions start with `[CUSTOM]`, so any tool-call log or accept/reject prompt tells you exactly which path is being used.
+
+On any name conflict, the local `custom_*` tools win (and the prefix makes conflicts impossible today).
+
+### Authentication
+
+Identical to Adobe's native MCP server — no credentials live on this server or in `.env`. Clients send these headers on **every** request:
+
+| Header | Value |
+|---|---|
+| `X-Marketo-Client-Id` | REST API client ID (Admin > LaunchPoint) |
+| `X-Marketo-Client-Secret` | REST API client secret |
+| `X-Marketo-Munchkin-Id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+| `X-Marketo-Endpoint` | *(optional)* REST base URL override, **without** `/rest` |
+
+For proxied tools the headers are forwarded to Adobe verbatim; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry).
+
+> **Note:** Adobe's native MCP server is in limited availability — your Munchkin ID must be allowlisted by Adobe. Until then, the proxied tools will fail upstream, but all `custom_*` tools work with any valid REST API credentials.
+
+### Run
+
+```bash
+python mcp_server_blended.py     # serves http://0.0.0.0:8000/mcp
+```
+
+The listen port comes from the `PORT` env var when set (Replit and most PaaS inject this), defaulting to 8000.
+
+If the native Adobe server can't be reached (missing headers, Munchkin ID not yet allowlisted, upstream outage), `tools/list` degrades gracefully to the `custom_*` tools instead of failing — so clients that import the tool list at session start (e.g. OpenAI agents) still connect.
+
+Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client) — same shape as Adobe's, just pointed at this server:
+
+```json
+{
+  "servers": {
+    "marketo-blended": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "X-Marketo-Client-Id": "YOUR-CLIENT-ID",
+        "X-Marketo-Client-Secret": "YOUR-CLIENT-SECRET",
+        "X-Marketo-Munchkin-Id": "YOUR-MUNCHKIN-ID"
+      }
+    }
+  }
+}
+```
+
+For stdio-only clients (e.g. Claude Desktop), bridge with `mcp-remote` and `--header` flags, exactly as in Adobe's docs.
+
+> **Security:** credentials transit as HTTP headers — only expose this server over TLS (or keep it on localhost / a trusted network), and never log header values.
+
+### Custom tools
+
+| Group | Tools |
+|---|---|
+| Leads | `custom_sync_leads` (create/update, ≤300/call), `custom_merge_leads`, `custom_get_lead_changes`, `custom_get_lead_activities_by_email` |
+| Emails | `custom_send_sample_email`, `custom_preview_email`, `custom_get_email_cc_fields` |
+| Landing pages | `custom_browse_landing_pages`, `custom_get_landing_page_by_id`, `custom_get_landing_page_by_name`, `custom_get_landing_page_content`, `custom_get_landing_page_full_content`, `custom_update_landing_page`, `custom_update_landing_page_content_section`, `custom_approve_landing_page`, `custom_unapprove_landing_page`, `custom_discard_landing_page_draft` |
+| Bulk import | `custom_import_leads_csv` (CSV string, ≤10MB), `custom_get_lead_import_failures`, `custom_get_lead_import_warnings` (status: use the native `get_import_status`) |
+| Program members | `custom_query_program_members` |
+| Destructive ops (native MCP excludes these) | `custom_deactivate_smart_campaign`, `custom_delete_smart_campaign`, `custom_delete_program`, `custom_unapprove_email_program`, `custom_delete_token` |
+
+### Test
+
+```bash
+# Self-contained check (no real credentials): starts a stub upstream and the
+# blended server, verifies tool merging, header forwarding, and error paths.
+python test_blended_server.py stub
+
+# Against your real instance (blended server must already be running):
+python test_blended_server.py live
+```
+
+### Blended server files
+
+```
+mcp_server_blended.py   # entry point — proxy wiring
+credentials.py          # header extraction + per-credential OAuth token cache
+marketo_client.py       # Marketo REST functions (base_url passed per request)
+custom_tools.py         # all custom_* tool definitions
+test_blended_server.py  # smoke tests (stub + live modes)
+```
+
+---
+
+## Legacy Servers
+
 ## Prerequisites
 
 - Python 3.10+
