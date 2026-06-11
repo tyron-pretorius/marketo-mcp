@@ -19,57 +19,42 @@ Tool naming: unprefixed tools are mirrored live from the native server;
 custom_* tools call the Marketo REST API directly from this server. On any
 name conflict, local custom tools win.
 
-Run:  python mcp_server_blended.py   ->  http://0.0.0.0:8000/mcp
+Requires fastmcp >= 3.
+
+Run:  python mcp_server_blended.py   ->  http://0.0.0.0:$PORT/mcp (default 8000)
 """
 
-import logging
 import os
 
+from fastmcp import FastMCP
 from fastmcp.client.transports import StreamableHttpTransport
-from fastmcp.server.proxy import FastMCPProxy, ProxyClient, ProxyToolManager
-from fastmcp.tools.tool_manager import ToolManager
+from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 
 from credentials import extract_marketo_headers
 from custom_tools import register_custom_tools
-
-logger = logging.getLogger("marketo-blended-mcp")
 
 # Overridable so the proxy path can be tested against a local stub upstream.
 NATIVE_MCP_URL = os.environ.get("NATIVE_MARKETO_MCP_URL", "https://marketo-mcp.adobe.io/mcp")
 
 
 def upstream_client_factory() -> ProxyClient:
-    # Called per request by the proxy managers, so the HTTP request context is
+    # Called per request by the proxy provider, so the HTTP request context is
     # active and the caller's X-Marketo-* headers can be forwarded upstream.
+    # Cached proxy components store this factory (not a bound client), so every
+    # native tool call re-runs it and uses the current caller's credentials.
     forward_headers = extract_marketo_headers()
     return ProxyClient(StreamableHttpTransport(NATIVE_MCP_URL, headers=forward_headers))
 
 
-class GracefulProxyToolManager(ProxyToolManager):
-    """Falls back to local custom tools when the upstream native MCP can't be
-    listed (missing headers, un-allowlisted Munchkin ID, upstream outage).
-
-    Without this, one upstream failure makes tools/list fail entirely, and
-    clients that import the tool list at session start (e.g. OpenAI agents)
-    would treat the whole server as broken even though the custom_* tools work.
-    Tool *calls* still surface upstream errors normally.
-    """
-
-    async def get_tools(self):
-        try:
-            return await super().get_tools()
-        except Exception as exc:
-            logger.warning(
-                "Native Marketo MCP unavailable (%s); listing custom tools only.",
-                type(exc).__name__,
-            )
-            return await ToolManager.get_tools(self)
-
-
-mcp = FastMCPProxy(client_factory=upstream_client_factory, name="MarketoBlendedMCP")
-mcp._tool_manager = GracefulProxyToolManager(
-    client_factory=upstream_client_factory,
-    transformations=mcp._tool_manager.transformations,
+# A plain FastMCP with a ProxyProvider (rather than FastMCPProxy) keeps the
+# MCP initialize handshake local: clients can always connect, and upstream
+# failures (missing headers, un-allowlisted Munchkin ID, outage) degrade
+# tools/list to the local custom_* tools with a warning — important for
+# clients that import the tool list at session start (e.g. OpenAI agents).
+# Native tool *calls* still surface upstream errors normally.
+mcp = FastMCP(
+    name="MarketoBlendedMCP",
+    providers=[ProxyProvider(upstream_client_factory)],
 )
 
 register_custom_tools(mcp)

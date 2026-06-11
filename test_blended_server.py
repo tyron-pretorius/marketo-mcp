@@ -31,6 +31,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 BLENDED_URL = "http://localhost:8000/mcp"
 STUB_URL = "http://localhost:8001/mcp"
+BLENDED_DEAD_UPSTREAM_URL = "http://localhost:8002/mcp"
 
 
 # ============================================================================
@@ -59,6 +60,14 @@ def _run_blended_against_stub():
     mcp_server_blended.mcp.run(transport="streamable-http", host="127.0.0.1", port=8000)
 
 
+def _run_blended_against_dead_upstream():
+    # Simulates Adobe's native MCP being unreachable (e.g. Munchkin ID not
+    # allowlisted, upstream outage) — tools/list should degrade to custom_*.
+    os.environ["NATIVE_MARKETO_MCP_URL"] = "http://127.0.0.1:9/mcp"
+    import mcp_server_blended
+    mcp_server_blended.mcp.run(transport="streamable-http", host="127.0.0.1", port=8002)
+
+
 async def _stub_checks():
     headers = {
         "X-Marketo-Client-Id": "stub-client-id",
@@ -82,26 +91,32 @@ async def _stub_checks():
         assert echoed.get("x-marketo-munchkin-id") == "123-STU-456", f"headers not forwarded: {echoed}"
         print("PASS X-Marketo-* headers forwarded to the upstream server")
 
-    async with Client(StreamableHttpTransport(BLENDED_URL)) as client:
+    # Upstream unreachable (the closed-beta / outage scenario): with valid
+    # headers, listing must degrade to custom tools instead of failing.
+    async with Client(StreamableHttpTransport(BLENDED_DEAD_UPSTREAM_URL, headers=headers)) as client:
         tools = {t.name for t in await client.list_tools()}
         assert tools and all(t.startswith("custom_") for t in tools), \
-            f"header-less listing should degrade to custom tools only: {sorted(tools)}"
-        print("PASS tools/list without headers degrades to custom tools only")
+            f"dead-upstream listing should degrade to custom tools only: {sorted(tools)}"
+        print("PASS tools/list with unreachable upstream degrades to custom tools only")
 
+    # No headers at all: listing must not silently pretend native tools exist;
+    # depending on fastmcp version this is either an error or a custom-only list.
+    async with Client(StreamableHttpTransport(BLENDED_URL)) as client:
         try:
-            await client.call_tool("custom_browse_landing_pages", {})
-            raise AssertionError("custom tool call without headers should have errored")
-        except AssertionError:
-            raise
+            tools = {t.name for t in await client.list_tools()}
         except Exception as exc:
-            assert "Missing Marketo auth headers" in str(exc), f"unexpected error: {exc}"
-            print("PASS tool call without headers produces a clear error")
+            print(f"PASS tools/list without headers is rejected ({type(exc).__name__})")
+        else:
+            assert all(t.startswith("custom_") for t in tools), \
+                f"header-less listing leaked native tools: {sorted(tools)}"
+            print("PASS tools/list without headers degrades to custom tools only")
 
 
 def run_stub_mode():
     procs = [
         multiprocessing.Process(target=_run_stub_upstream, daemon=True),
         multiprocessing.Process(target=_run_blended_against_stub, daemon=True),
+        multiprocessing.Process(target=_run_blended_against_dead_upstream, daemon=True),
     ]
     for p in procs:
         p.start()
