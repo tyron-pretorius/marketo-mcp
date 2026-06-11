@@ -37,6 +37,10 @@ For proxied tools the headers are forwarded to Adobe verbatim; for custom tools 
 python mcp_server_blended.py     # serves http://0.0.0.0:8000/mcp
 ```
 
+The listen port comes from the `PORT` env var when set (Replit and most PaaS inject this), defaulting to 8000.
+
+If the native Adobe server can't be reached (missing headers, Munchkin ID not yet allowlisted, upstream outage), `tools/list` degrades gracefully to the `custom_*` tools instead of failing — so clients that import the tool list at session start (e.g. OpenAI agents) still connect.
+
 Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client) — same shape as Adobe's, just pointed at this server:
 
 ```json

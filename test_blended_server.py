@@ -83,12 +83,19 @@ async def _stub_checks():
         print("PASS X-Marketo-* headers forwarded to the upstream server")
 
     async with Client(StreamableHttpTransport(BLENDED_URL)) as client:
+        tools = {t.name for t in await client.list_tools()}
+        assert tools and all(t.startswith("custom_") for t in tools), \
+            f"header-less listing should degrade to custom tools only: {sorted(tools)}"
+        print("PASS tools/list without headers degrades to custom tools only")
+
         try:
-            await client.list_tools()
-            print("WARN tools/list without headers did not error (custom-only listing?)")
+            await client.call_tool("custom_browse_landing_pages", {})
+            raise AssertionError("custom tool call without headers should have errored")
+        except AssertionError:
+            raise
         except Exception as exc:
             assert "Missing Marketo auth headers" in str(exc), f"unexpected error: {exc}"
-            print("PASS missing headers produce a clear error")
+            print("PASS tool call without headers produces a clear error")
 
 
 def run_stub_mode():
