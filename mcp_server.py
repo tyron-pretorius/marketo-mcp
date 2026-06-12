@@ -63,6 +63,13 @@ def describe_leads() -> dict:
     result = marketo_functions.describeLeads(token)
     return result
 
+@mcp.tool()
+def merge_leads(winning_lead_id: int, losing_lead_ids: list, merge_in_crm: bool = False) -> dict:
+    """Merge duplicate lead records into a winning lead in Marketo. The winning lead retains its data, and losing leads are merged into it."""
+    token = marketo_functions.getToken()
+    result = marketo_functions.mergeLeads(token, winning_lead_id, losing_lead_ids, merge_in_crm)
+    return result
+
 # ============================================================================
 # Email Tools
 # ============================================================================
@@ -361,6 +368,17 @@ def delete_token(folder_id: int, name: str, token_type: str,
     token = marketo_functions.getToken()
     result = marketo_functions.deleteToken(token, folder_id, name, token_type, folder_type)
     return result
+
+# ============================================================================
+# Expanded API coverage — the same custom_* tool set as the blended server
+# (300+ Marketo REST operations), using .env credentials instead of
+# per-request X-Marketo-* headers.
+# ============================================================================
+
+import legacy_api
+from custom_tools import register_custom_tools
+
+register_custom_tools(mcp, creds_provider=legacy_api.env_creds)
 
 # ============================================================================
 # Run the server
