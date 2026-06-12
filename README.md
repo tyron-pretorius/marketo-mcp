@@ -2,12 +2,12 @@
 
 An MCP (Model Context Protocol) server that exposes Adobe Marketo REST API operations as tools. Built with [FastMCP](https://github.com/jlowin/fastmcp), it allows AI assistants and MCP clients to interact with your Marketo instance.
 
-This repo contains two generations of server:
+This repo contains two generations of server, all backed by a **single API library** — [marketo_functions.py](marketo_functions.py), 325 functions covering the complete Marketo REST API surface (leads, schema/custom fields, companies, opportunities + roles, sales persons, custom objects + types, named accounts, program members, smart campaigns/lists, snippets, segmentation, emails + templates + files, landing pages + templates, redirect rules, forms, folders, tokens, bulk import/export for leads/activities/program members/custom objects, usage stats, Asset v2 "Emails 2.0", and user management). Every MCP tool in every server is a thin FastMCP wrapper over the corresponding function. Intentionally excluded: the Data Ingestion API (separate host, paid add-on SKU) and the deprecated `/rest/v1/campaigns.json` endpoints.
 
-- **`mcp_server_blended.py` (recommended)** — proxies [Adobe's native Marketo MCP server](https://experienceleague.adobe.com/en/docs/marketo-developer/marketo/mcp-server) for its ~120 tools and adds `custom_*` tools for everything it lacks. See [Blended Server](#blended-server-recommended).
-- **`mcp_server.py` / `mcp_server_auth.py` (legacy)** — standalone servers that implement a subset of Marketo REST operations directly, with credentials in `.env`. See [Legacy Servers](#legacy-servers).
+- **`mcp_server_blended.py` (recommended if you have native MCP access)** — proxies [Adobe's native Marketo MCP server](https://experienceleague.adobe.com/en/docs/marketo-developer/marketo/mcp-server) for its ~120 tools and adds 255 `custom_*` tools for everything it lacks. See [Blended Server](#blended-server-recommended-if-you-have-native-mcp-access).
+- **`mcp_server.py` / `mcp_server_auth.py`** — standalone servers exposing the full surface (297 tools: 42 original + 255 expanded) with credentials in `.env`, for teams **without** native Marketo MCP access. See [Legacy Servers](#legacy-servers).
 
-## Blended Server (recommended)
+## Blended Server (recommended if you have native MCP access)
 
 `mcp_server_blended.py` gives you a single MCP endpoint that combines:
 
@@ -63,16 +63,23 @@ For stdio-only clients (e.g. Claude Desktop), bridge with `mcp-remote` and `--he
 
 > **Security:** credentials transit as HTTP headers — only expose this server over TLS (or keep it on localhost / a trusted network), and never log header values.
 
-### Custom tools
+### Custom tools (255)
 
-| Group | Tools |
+Every Marketo REST operation the native MCP lacks, as `custom_*` tools grouped by domain (definitions in [custom_tools.py](custom_tools.py) and [marketo_rest/](marketo_rest/)):
+
+| Group | Coverage |
 |---|---|
-| Leads | `custom_sync_leads` (create/update, ≤300/call), `custom_merge_leads`, `custom_get_lead_changes`, `custom_get_lead_activities_by_email` |
-| Emails | `custom_send_sample_email`, `custom_preview_email`, `custom_get_email_cc_fields` |
-| Landing pages | `custom_browse_landing_pages`, `custom_get_landing_page_by_id`, `custom_get_landing_page_by_name`, `custom_get_landing_page_content`, `custom_get_landing_page_full_content`, `custom_update_landing_page`, `custom_update_landing_page_content_section`, `custom_approve_landing_page`, `custom_unapprove_landing_page`, `custom_discard_landing_page_draft` |
-| Bulk import | `custom_import_leads_csv` (CSV string, ≤10MB), `custom_get_lead_import_failures`, `custom_get_lead_import_warnings` (status: use the native `get_import_status`) |
-| Program members | `custom_query_program_members` |
-| Destructive ops (native MCP excludes these) | `custom_deactivate_smart_campaign`, `custom_delete_smart_campaign`, `custom_delete_program`, `custom_unapprove_email_program`, `custom_delete_token` |
+| Leads & schema | sync (incl. `createDuplicate`), get/delete, merge, push, submit form, associate, partitions, program status, list/program/campaign membership, changes, custom lead fields |
+| Activities | deleted leads, add custom activities, full custom activity type lifecycle |
+| CRM objects | companies, opportunities + roles, sales persons, custom objects + full type/schema lifecycle, named accounts + lists (ABM) |
+| Program members | status/data sync, delete, custom PM fields |
+| Bulk | lead import + failures/warnings; activity/program-member/custom-object exports (create/enqueue/status/file/cancel/list); PM/CO imports; lead export list/cancel |
+| Emails & templates | metadata/clone/delete/unapprove/discard, headers, modules, dynamic content, full content, variables, full email template lifecycle, files upload/replace |
+| Landing pages | full LP lifecycle + content sections + dynamic content + variables, LP template lifecycle, redirect rules, domains, segmentation reads |
+| Forms & assets | form delete/discard/field deletes/submit button/thank-you pages, folder delete, smart campaign clone, smart list/snippet deletes |
+| Asset v2 ("Emails 2.0") | email/template/fragment create/get/update/delete/clone/state transition/used-by |
+| User management | users, roles, workspaces, invites |
+| Stats | daily/weekly usage and errors |
 
 ### Test
 
@@ -81,18 +88,38 @@ For stdio-only clients (e.g. Claude Desktop), bridge with `mcp-remote` and `--he
 # blended server, verifies tool merging, header forwarding, and error paths.
 python test_blended_server.py stub
 
-# Against your real instance (blended server must already be running):
+# One custom + one native call against your instance (server must be running):
 python test_blended_server.py live
+
+# Full end-to-end suite: starts the server itself and exercises EVERY custom_*
+# tool plus a native smoke set against a real sandbox. Credentials come from
+# the environment or a .env.sandbox file (MARKETO_CLIENT_ID/SECRET/MUNCHKIN_ID).
+# All assets it creates are MCPTEST_FULL_* and are cleaned up.
+python test_blended_server.py full
+python test_blended_server.py full --dry-run            # plan only, no API calls
+python test_blended_server.py full --group bulk-export  # just the bulk-export tools
+python test_blended_server.py full --group bulk-import  # just the bulk-import tools
 ```
+
+The bulk-export tests deliberately create tiny jobs (a few-minute activity
+window over the suite's own leads; exports scoped to the suite's program /
+records) and bulk-import tests use 2–3 row CSVs, so they run in seconds.
+
+Tools for un-provisioned features SKIP with a reason rather than fail — e.g.
+Asset v2 / Emails 2.0 (if not enabled on the instance), ABM named accounts,
+user management (needs the "Access User Management" API permission), and
+field-schema endpoints (need the schema permission on the API role).
 
 ### Blended server files
 
 ```
 mcp_server_blended.py   # entry point — proxy wiring
 credentials.py          # header extraction + per-credential OAuth token cache
-marketo_client.py       # Marketo REST functions (base_url passed per request)
-custom_tools.py         # all custom_* tool definitions
-test_blended_server.py  # smoke tests (stub + live modes)
+marketo_functions.py    # THE API library — all 325 REST functions (shared by every server)
+custom_tools.py         # custom_* tool wrappers (+ marketo_rest/ domain modules)
+marketo_rest/bridge.py  # creds resolution + token retry between tools and the library
+legacy_api.py           # env-credential provider for the legacy servers
+test_blended_server.py  # tests (stub / live / full modes)
 ```
 
 ---
@@ -292,27 +319,57 @@ python test_mcp_server.py
 
 ### Test modes
 
-Both test scripts offer three modes when run:
+Both scripts support interactive modes (1 read-only / 2 write / 3 full) and a
+non-interactive `--auto` mode that drives the full surface end-to-end:
 
-1. **Read-only tests** — Safe, no modifications to your Marketo instance. Browses emails, campaigns, programs, folders, and looks up leads.
-2. **Write-only tests** — Creates, updates, clones, and deletes test assets (prefixed with `MCPTEST_`). Prompts for confirmation before destructive operations. Offers cleanup at the end.
-3. **Full tests** — Runs read-only tests followed by write tests.
+```bash
+# Functions: every one of the 325 functions, dependency-ordered, MCPTEST_LEG_*
+# assets created and cleaned up. Reads .env or .env.sandbox.
+python test_marketo_functions.py --auto
+
+# Tools: every one of the 297 tools — self-starts mcp_server.py and drives it
+# as an MCP client.
+python test_mcp_server.py --auto
+
+# Bulk groups run standalone with only their minimal prerequisites (tiny jobs):
+python test_marketo_functions.py --group bulk-export
+python test_marketo_functions.py --group bulk-import
+python test_mcp_server.py --group bulk-export
+python test_mcp_server.py --group bulk-import
+```
+
+`--auto` prints a coverage report (every function/tool exercised) and a
+PASS/FAIL/SKIP summary, and exits non-zero on any FAIL or uncovered item.
+SKIPs are for un-provisioned features (Asset v2, ABM, user management,
+field-schema permission) or documented state-dependent operations.
+
+Notable test chains: leads are created (`createOnly`), a duplicate is made
+(`createDuplicate`), then merged — covering create, duplicate, and merge in
+one flow; required program tags are discovered from the instance's tag types
+before creating a program.
 
 ### Test configuration
 
-Test inputs (email addresses, folder IDs, campaign names, etc.) are saved to `test_config.json` after the first run so you don't have to re-enter them. Delete or edit this file to reset test inputs.
+Interactive runs save inputs (emails, folder IDs, names) to `test_config.json`
+so you don't re-enter them. `--auto` runs need no config — they discover
+targets from the instance. Delete `test_config.json` to reset interactive inputs.
 
 ## Project Structure
 
 ```
 MarketoMCP/
-├── mcp_server.py               # MCP server — no auth (for Claude Desktop)
-├── mcp_server_auth.py          # MCP server — bearer token auth (for OpenAI and other clients)
-├── marketo_functions.py         # Marketo REST API wrapper functions
-├── test_mcp_server.py           # MCP protocol-level test suite
-├── test_marketo_functions.py    # Direct function test suite
-├── test_config.json             # Saved test inputs (auto-generated)
-├── requirements.txt             # Python dependencies
+├── marketo_functions.py         # THE API library — all 325 Marketo REST functions
+├── mcp_server_blended.py        # Blended server: native-MCP proxy + custom_* tools (header auth)
+├── mcp_server.py                # Legacy server — no auth (for Claude Desktop)
+├── mcp_server_auth.py           # Legacy server — bearer token auth (OpenAI etc.)
+├── custom_tools.py              # custom_* tool wrappers (registers the marketo_rest modules)
+├── marketo_rest/                # Domain tool modules + bridge.py (creds/token plumbing)
+├── credentials.py               # Blended-server header creds + OAuth token cache
+├── legacy_api.py                # Legacy-server env-credential provider
+├── test_blended_server.py       # Blended tests (stub / live / full / --group)
+├── test_mcp_server.py           # Legacy MCP protocol test suite (--auto / --group)
+├── test_marketo_functions.py    # Direct function test suite (--auto / --group)
+├── requirements.txt             # Python dependencies (fastmcp>=3,<4)
 ├── .env_template                # Environment variable template
 └── .env                         # Your credentials (not committed)
 ```

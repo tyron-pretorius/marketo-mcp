@@ -398,6 +398,17 @@ def delete_token(folder_id: int, name: str, token_type: str,
     return result
 
 # ============================================================================
+# Expanded API coverage — the same custom_* tool set as the blended server
+# (300+ Marketo REST operations), using .env credentials instead of
+# per-request X-Marketo-* headers.
+# ============================================================================
+
+import legacy_api
+from custom_tools import register_custom_tools
+
+register_custom_tools(mcp, creds_provider=legacy_api.env_creds)
+
+# ============================================================================
 # Run the server
 # ============================================================================
 

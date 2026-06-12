@@ -28,10 +28,10 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment variables
+# Environment variables (never commit credentials — incl. .env.sandbox)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env_template
 
 # IDE
 .vscode/
