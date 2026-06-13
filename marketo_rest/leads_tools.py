@@ -23,6 +23,20 @@ def register(mcp: FastMCP, creds_provider=None):
     # ========================================================================
 
     @mcp.tool()
+    def custom_get_leads_by_filter(filter_type: str, filter_values: list,
+                                   fields: list = None, batch_size: int = 300,
+                                   next_page_token: str = None) -> dict:
+        """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        Get leads by filter (filter_type 'email' or 'id'), returning EXACTLY
+        the requested `fields` (API names). Use this instead of the native
+        get_leads_by_filter when you need specific fields — the native tool
+        ignores its field argument and returns a fixed default set. Up to 300
+        id values or 30 email values per call; omit fields for Marketo's
+        default set."""
+        return _call(mf.getLeadsByFilter, filter_type, filter_values, fields,
+                     batch_size, next_page_token)
+
+    @mcp.tool()
     def custom_get_lead_by_id(lead_id: int, fields: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         Get a single lead by its Marketo lead id. fields is an optional
