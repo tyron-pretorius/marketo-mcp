@@ -685,6 +685,21 @@ def build_full_steps(sfx):
                         {"email": email(3), "firstName": "MCP", "lastName": "TestThree"}]},
              save=save_lead_ids, groups=(BULK_EXPORT,)))
     add(step("custom_get_lead_by_id", lambda c: {"lead_id": c["lead1"], "fields": "id,email"}))
+
+    # Field-honoring lead lookup — the reason this custom tool exists is that
+    # the native get_leads_by_filter ignores its field argument and returns a
+    # fixed default set. Assert a requested non-default field round-trips, so
+    # this step FAILs (not silently passes) if field selection ever regresses.
+    def _assert_field_selection(ctx, data):
+        rows = data.get("result") or []
+        if rows and "leadScore" not in rows[0]:
+            raise AssertionError(
+                "custom_get_leads_by_filter dropped the requested fields "
+                f"(got keys {sorted(rows[0])})")
+    add(step("custom_get_leads_by_filter",
+             lambda c: {"filter_type": "email", "filter_values": [email(1)],
+                        "fields": ["id", "email", "leadStatus", "leadScore"]},
+             save=_assert_field_selection))
     add(step("custom_describe_lead2"))
     add(step("custom_get_lead_fields", {"batch_size": 5}))
     add(step("custom_get_lead_field_by_name", {"field_api_name": "email"}))

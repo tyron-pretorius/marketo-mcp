@@ -170,6 +170,33 @@ def lookupLead(token, filterType, filterValues, fields=None):
     return response.json()
 
 
+def getLeadsByFilter(token, filterType, filterValues, fields=None, batchSize=None,
+                     nextPageToken=None):
+    """Get leads by filter (email or id), honoring an explicit field list.
+
+    Unlike the native MCP's get_leads_by_filter (which ignores its field
+    argument and returns a fixed default set), this passes the requested
+    fields straight to the REST `fields` parameter, so only those fields are
+    returned. Omit fields to get Marketo's default set.
+    """
+    url = _base() + '/rest/v1/leads.json'
+    headers = {'Authorization': 'Bearer ' + token}
+
+    if isinstance(filterValues, list):
+        filterValues = ','.join(map(str, filterValues))
+
+    params = {'filterType': filterType, 'filterValues': filterValues}
+    if fields:
+        params['fields'] = ','.join(fields) if isinstance(fields, list) else fields
+    if batchSize:
+        params['batchSize'] = batchSize
+    if nextPageToken:
+        params['nextPageToken'] = nextPageToken
+
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    return response.json()
+
+
 def describeLeads(token):
     """Get lead field metadata and schema information."""
     url = _base() + '/rest/v1/leads/describe.json'
