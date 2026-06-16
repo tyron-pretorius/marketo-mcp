@@ -1,28 +1,23 @@
 """
 Smoke tests for the blended Marketo MCP server (mcp_server_blended.py).
 
-Three modes:
+Run it with no arguments and choose a mode at the menu:
 
-  python test_blended_server.py stub
-      Self-contained, no real credentials needed. Starts a local stub
-      "native" MCP server that echoes the headers it receives, starts the
-      blended server pointed at the stub, then verifies:
-        - tools/list merges custom_* tools with the stub's tools
-        - the X-Marketo-* headers are forwarded to the upstream server
-        - requests without headers fail with a clear error
+    python3 test_blended_server.py
 
-  python test_blended_server.py live
-      Requires real Marketo credentials (prompted, or set MARKETO_CLIENT_ID /
-      MARKETO_CLIENT_SECRET / MARKETO_MUNCHKIN_ID env vars) and the blended
+  Live mode
+      Requires real Marketo credentials (read from .env, falling back to
+      .env.sandbox, or set MARKETO_CLIENT_ID / MARKETO_CLIENT_SECRET /
+      MARKETO_MUNCHKIN_ID env vars, else prompted) and the blended
       server already running on http://localhost:8000/mcp. Lists tools and
       calls one custom tool (custom_browse_landing_pages). Calling proxied
       native tools end-to-end additionally requires your Munchkin ID to be
       allowlisted in Adobe's beta.
 
-  python test_blended_server.py full [--dry-run] [--suffix SFX] [--group GROUP]
+  Full suite
       Comprehensive end-to-end suite against a REAL Marketo sandbox. Starts
       the blended server itself (subprocess, PORT=8000), connects with the
-      X-Marketo-* headers (read from the environment or .env.sandbox), and
+      X-Marketo-* headers (read from the environment, .env, or .env.sandbox), and
       exercises EVERY custom_* tool plus a native-tool smoke set
       (browse_folders, browse_channels, describe_lead, get_leads_by_filter,
       browse_programs, browse_forms, browse_smart_campaigns, browse_lists,
@@ -35,18 +30,21 @@ Three modes:
       end (except Marketo objects the API cannot delete: lead fields and
       program-member fields use fixed names with reuse-if-exists semantics;
       Design Studio files get one tiny per-run file that cannot be removed).
-      --dry-run prints the planned steps and the coverage check without
-      making any API call.
 
-      --group NAME runs only the steps tagged with that group plus their
-      minimal prerequisites (asset setup + cleanup). Available groups:
-      bulk-export, bulk-import. Without --group, everything runs and full
-      custom-tool coverage is asserted.
+      After picking this mode you are prompted for three optional settings
+      (press Enter to accept the default):
+        - Dry run: print the planned steps and the coverage check without
+          making any API call.
+        - Run suffix: embedded in asset names so reruns never collide
+          (defaults to a timestamp).
+        - Group: run only the steps tagged with that group plus their
+          minimal prerequisites (asset setup + cleanup). Available groups:
+          bulk-export, bulk-import. Leave blank to run everything and assert
+          full custom-tool coverage.
 """
 
 import asyncio
 import json
-import multiprocessing
 import os
 import re
 import subprocess
@@ -54,109 +52,12 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import dotenv
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.exceptions import ToolError
 
 BLENDED_URL = "http://localhost:8000/mcp"
-STUB_URL = "http://localhost:8001/mcp"
-BLENDED_DEAD_UPSTREAM_URL = "http://localhost:8002/mcp"
-
-
-# ============================================================================
-# Stub mode
-# ============================================================================
-
-def _run_stub_upstream():
-    """A fake 'native Marketo MCP' that echoes the headers it receives."""
-    from fastmcp import FastMCP
-    from fastmcp.server.dependencies import get_http_headers
-
-    stub = FastMCP("StubNativeMarketoMCP")
-
-    @stub.tool()
-    def browse_forms() -> dict:
-        """Stub native tool that returns the X-Marketo headers it received."""
-        headers = get_http_headers()
-        return {k: v for k, v in headers.items() if k.startswith("x-marketo-")}
-
-    stub.run(transport="streamable-http", host="127.0.0.1", port=8001)
-
-
-def _run_blended_against_stub():
-    os.environ["NATIVE_MARKETO_MCP_URL"] = STUB_URL
-    import mcp_server_blended
-    mcp_server_blended.mcp.run(transport="streamable-http", host="127.0.0.1", port=8000)
-
-
-def _run_blended_against_dead_upstream():
-    # Simulates Adobe's native MCP being unreachable (e.g. Munchkin ID not
-    # allowlisted, upstream outage) — tools/list should degrade to custom_*.
-    os.environ["NATIVE_MARKETO_MCP_URL"] = "http://127.0.0.1:9/mcp"
-    import mcp_server_blended
-    mcp_server_blended.mcp.run(transport="streamable-http", host="127.0.0.1", port=8002)
-
-
-async def _stub_checks():
-    headers = {
-        "X-Marketo-Client-Id": "stub-client-id",
-        "X-Marketo-Client-Secret": "stub-secret",
-        "X-Marketo-Munchkin-Id": "123-STU-456",
-    }
-
-    async with Client(StreamableHttpTransport(BLENDED_URL, headers=headers)) as client:
-        tools = {t.name for t in await client.list_tools()}
-
-        custom = {t for t in tools if t.startswith("custom_")}
-        native = tools - custom
-        assert "browse_forms" in native, f"stub native tool missing from merged list: {sorted(tools)}"
-        assert "custom_sync_leads" in custom and "custom_update_landing_page" in custom, \
-            f"custom tools missing from merged list: {sorted(custom)}"
-        print(f"PASS tools/list merges native ({len(native)}) + custom ({len(custom)}) tools")
-
-        result = await client.call_tool("browse_forms", {})
-        echoed = result.data if hasattr(result, "data") else result
-        assert echoed.get("x-marketo-client-id") == "stub-client-id", f"headers not forwarded: {echoed}"
-        assert echoed.get("x-marketo-munchkin-id") == "123-STU-456", f"headers not forwarded: {echoed}"
-        print("PASS X-Marketo-* headers forwarded to the upstream server")
-
-    # Upstream unreachable (the closed-beta / outage scenario): with valid
-    # headers, listing must degrade to custom tools instead of failing.
-    async with Client(StreamableHttpTransport(BLENDED_DEAD_UPSTREAM_URL, headers=headers)) as client:
-        tools = {t.name for t in await client.list_tools()}
-        assert tools and all(t.startswith("custom_") for t in tools), \
-            f"dead-upstream listing should degrade to custom tools only: {sorted(tools)}"
-        print("PASS tools/list with unreachable upstream degrades to custom tools only")
-
-    # No headers at all: listing must not silently pretend native tools exist;
-    # depending on fastmcp version this is either an error or a custom-only list.
-    async with Client(StreamableHttpTransport(BLENDED_URL)) as client:
-        try:
-            tools = {t.name for t in await client.list_tools()}
-        except Exception as exc:
-            print(f"PASS tools/list without headers is rejected ({type(exc).__name__})")
-        else:
-            assert all(t.startswith("custom_") for t in tools), \
-                f"header-less listing leaked native tools: {sorted(tools)}"
-            print("PASS tools/list without headers degrades to custom tools only")
-
-
-def run_stub_mode():
-    procs = [
-        multiprocessing.Process(target=_run_stub_upstream, daemon=True),
-        multiprocessing.Process(target=_run_blended_against_stub, daemon=True),
-        multiprocessing.Process(target=_run_blended_against_dead_upstream, daemon=True),
-    ]
-    for p in procs:
-        p.start()
-    time.sleep(3)  # give both servers time to bind
-
-    try:
-        asyncio.run(_stub_checks())
-        print("\nAll stub-mode checks passed.")
-    finally:
-        for p in procs:
-            p.terminate()
 
 
 # ============================================================================
@@ -164,6 +65,7 @@ def run_stub_mode():
 # ============================================================================
 
 def _get_live_headers() -> dict:
+    _load_env_files()
     client_id = os.environ.get("MARKETO_CLIENT_ID") or input("Marketo Client ID: ").strip()
     client_secret = os.environ.get("MARKETO_CLIENT_SECRET") or input("Marketo Client Secret: ").strip()
     munchkin_id = os.environ.get("MARKETO_MUNCHKIN_ID") or input("Marketo Munchkin ID (e.g. 123-ABC-456): ").strip()
@@ -219,18 +121,16 @@ ACT_TYPE = "mcptestfullact1"
 CO_TYPE = "mcptest_full_co"
 
 
-def _load_env_sandbox():
-    """Populate MARKETO_* env vars from .env.sandbox when not already set."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.sandbox")
-    if not os.path.exists(path):
-        return
-    with open(path) as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
+def _load_env_files():
+    """Populate MARKETO_* env vars from .env (preferred), then .env.sandbox.
+
+    load_dotenv never overrides a variable already present in the real
+    environment, and the first file loaded wins over later ones, so the
+    precedence is: real env vars > .env > .env.sandbox.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    dotenv.load_dotenv(os.path.join(here, ".env"))
+    dotenv.load_dotenv(os.path.join(here, ".env.sandbox"))
 
 
 def _iso(dt):
@@ -307,8 +207,31 @@ BULK_BOTH = (BULK_EXPORT, BULK_IMPORT)
 AVAILABLE_GROUPS = (BULK_EXPORT, BULK_IMPORT)
 
 
+# Tool-name verb prefixes that mutate Marketo state. Used to infer whether a
+# step is a write when its builder does not pass write= explicitly.
+_WRITE_VERBS = (
+    "create", "update", "delete", "clone", "approve", "unapprove", "add",
+    "remove", "sync", "push", "merge", "submit", "import", "upload", "replace",
+    "discard", "activate", "deactivate", "associate", "change", "invite",
+    "rename", "duplicate", "rearrange", "reorder", "schedule", "trigger",
+    "enqueue", "cancel", "transition", "send", "set",
+)
+
+
+def _infer_write(tool):
+    """Best-effort read/write classification from the tool-name verb.
+
+    custom_* tools carry the verb after the prefix; native tools start with the
+    verb. Browse/get/list/describe/query/facet/preview/is_member/used_by are
+    reads; the verbs in _WRITE_VERBS mutate state."""
+    base = tool[len("custom_"):] if tool.startswith("custom_") else tool
+    verb = base.split("_", 1)[0]
+    return verb in _WRITE_VERBS
+
+
 def step(tool, args=None, *, save=None, skip_if=None, skip_on=(), skip_errors=None,
-         native=False, smoke=False, poll=None, after=None, notes="", groups=()):
+         native=False, smoke=False, poll=None, after=None, notes="", groups=(),
+         write=None):
     """Build one suite step.
 
     tool        MCP tool name.
@@ -327,12 +250,17 @@ def step(tool, args=None, *, save=None, skip_if=None, skip_on=(), skip_errors=No
                 POLL_INTERVAL until done() or POLL_TIMEOUT; ctx[flag]=done.
     after       callable(ctx, status, data) always run, even on SKIP/FAIL.
     groups      group names this step belongs to (for `full --group NAME`).
+    write       True if the step mutates Marketo state, False if it is a pure
+                read. Defaults to a verb-based inference from the tool name.
+                The read-only run executes only write=False steps; the
+                write-only run executes the create/update/delete lifecycle.
     """
     return {
         "tool": tool, "args": args or {}, "save": save, "skip_if": skip_if,
         "skip_on": tuple(skip_on), "skip_errors": skip_errors, "native": native,
         "smoke": smoke, "poll": poll, "after": after, "notes": notes,
         "groups": frozenset(groups),
+        "write": _infer_write(tool) if write is None else write,
     }
 
 
@@ -1509,13 +1437,48 @@ def build_full_steps(sfx):
                    "target; minutes-wide window around this run's leads keeps it tiny"))
     add(step("custom_cancel_lead_export_job", lambda c: {"export_id": c["lead_export"]},
              skip_if=_need("lead_export"), groups=(BULK_EXPORT,)))
-    add(step("custom_create_activity_export_job",
-             lambda c: {"start_at": _iso(now - timedelta(minutes=2)),
-                        "end_at": _iso(datetime.now(timezone.utc))},
+
+    # Discover a tiny set of activity type ids to scope the export to. Without
+    # this, the createdAt window alone could still match a large volume of
+    # activity on a busy instance; pinning activity_type_ids caps the export at
+    # a handful of rows regardless of instance traffic. Prefer the custom
+    # activity type this run generates (set in section L when running `full`);
+    # always add a couple of common standard types (Visit Webpage / Fill Out
+    # Form / Click Email) so the scope holds in `--group bulk-export` too.
+    def save_act_type_ids(ctx, data):
+        # get_activity_types (native) may answer a bare list or a {'result': []}
+        # envelope; _rows handles both.
+        rows = _rows(data)
+        wanted = {"visit webpage", "fill out form", "click email"}
+        ids = [t["id"] for t in rows
+               if str(t.get("name", "")).strip().lower() in wanted]
+        if ctx.get("act_type_id"):
+            ids.append(ctx["act_type_id"])
+        # Fall back to the first activity type if none of the common ones exist,
+        # so the export is still scoped (never an unscoped full-window pull).
+        if not ids and rows:
+            ids = [rows[0]["id"]]
+        ctx["act_export_type_ids"] = ids
+
+    add(step("get_activity_types", native=True, save=save_act_type_ids,
+             groups=(BULK_EXPORT,),
+             notes="discover activity_type_ids to cap the activity export"))
+
+    def activity_export_args(c):
+        # createdAt window of a few minutes around this run's activities, AND
+        # scoped to a handful of activity type ids — the type scope is the hard
+        # cap that keeps this job tiny no matter how busy the instance is.
+        args = {"start_at": _iso(now - timedelta(minutes=2)),
+                "end_at": _iso(datetime.now(timezone.utc))}
+        if c.get("act_export_type_ids"):
+            args["activity_type_ids"] = c["act_export_type_ids"]
+        return args
+
+    add(step("custom_create_activity_export_job", activity_export_args,
              save=_save_key("act_export", "result", 0, "exportId"),
              groups=(BULK_EXPORT,),
-             notes="tiny job: createdAt window of a few minutes around the "
-                   "activities this run generated (roughly one lead's activities)"))
+             notes="tiny job: createdAt window of a few minutes AND scoped to a "
+                   "handful of activity_type_ids (caps it regardless of traffic)"))
     add(step("custom_enqueue_activity_export_job", lambda c: {"export_id": c["act_export"]},
              skip_if=_need("act_export"), groups=(BULK_EXPORT,)))
     add(step("custom_get_activity_export_job_status",
@@ -1527,12 +1490,11 @@ def build_full_steps(sfx):
              skip_if=lambda c: (None if (c.get("act_export") and c.get("act_export_done"))
                                 else "export job still pending after poll window"),
              groups=(BULK_EXPORT,)))
-    add(step("custom_create_activity_export_job",
-             lambda c: {"start_at": _iso(now - timedelta(minutes=2)),
-                        "end_at": _iso(datetime.now(timezone.utc))},
+    add(step("custom_create_activity_export_job", activity_export_args,
              save=_save_key("act_export2", "result", 0, "exportId"),
              groups=(BULK_EXPORT,),
-             notes="second tiny job, created only to exercise cancel"))
+             notes="second tiny job (same activity_type_ids scope), created only "
+                   "to exercise cancel"))
     add(step("custom_cancel_activity_export_job", lambda c: {"export_id": c["act_export2"]},
              skip_if=_need("act_export2"), groups=(BULK_EXPORT,)))
     add(step("custom_list_activity_export_jobs", {"batch_size": 10},
@@ -1787,15 +1749,296 @@ def build_full_steps(sfx):
 
 
 # ---------------------------------------------------------------------------
+# Read-only discovery pass
+# ---------------------------------------------------------------------------
+#
+# A self-contained read pass that creates/updates/deletes NOTHING. It browses
+# each asset type via the appropriate browse/native tool, takes the first
+# existing result, and exercises the READ custom tools against it. A read step
+# whose discovery turned up nothing SKIPs with a reason. Every step here is
+# write=False; the runner refuses to execute any write=True step in read-only
+# mode, so this pass is structurally incapable of mutating Marketo.
+
+def _disc(key, *path, index=0):
+    """save= helper for discovery: stash result[index] (or a nested field).
+
+    With no path: ctx[key] = result[index] (the whole row).
+    With a path:  ctx[key] = result[index][path...].
+    """
+    def _save(ctx, data):
+        rows = _rows(data)
+        if not rows:
+            return
+        value = rows[index]
+        for part in path:
+            value = value[part]
+        ctx[key] = value
+    return _save
+
+
+def _have(*keys):
+    """skip_if= helper: SKIP when a discovered dependency is absent."""
+    def _check(ctx):
+        for key in keys:
+            if not ctx.get(key) and ctx.get(key) != 0:
+                return f"nothing discovered for: {key}"
+        return None
+    return _check
+
+
+def _r(tool, args=None, **kw):
+    """A read step: forces write=False and defaults skip_errors so a feature/
+    permission-gated read records SKIP (not FAIL) in the safe read-only pass."""
+    kw.setdefault("write", False)
+    kw.setdefault("skip_errors", "read-only probe")
+    return step(tool, args, **kw)
+
+
+def build_readonly_steps():
+    """Discovery-driven, mutation-free read pass over every asset type."""
+    steps = []
+    add = steps.append
+
+    # ---- folders -----------------------------------------------------------
+    def save_first_folder(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_folder_id"] = rows[0]["id"]
+            ctx["ro_folder_name"] = rows[0].get("name") or rows[0].get("folderName")
+    add(_r("browse_folders", {"maxReturn": 50}, native=True, save=save_first_folder))
+    add(_r("get_folder_by_id", lambda c: {"id": c["ro_folder_id"]}, native=True,
+           skip_if=_have("ro_folder_id")))
+    add(_r("get_folder_by_name", lambda c: {"name": c["ro_folder_name"]}, native=True,
+           skip_if=_have("ro_folder_name")))
+    add(_r("get_folder_content", lambda c: {"id": c["ro_folder_id"]}, native=True,
+           skip_if=_have("ro_folder_id")))
+    add(_r("get_tokens_by_folder",
+           lambda c: {"id": c["ro_folder_id"], "folderType": "Folder"}, native=True,
+           skip_if=_have("ro_folder_id")))
+
+    # ---- lists (discovered early; also a source of a real lead id) --------
+    def save_lists(ctx, data):
+        ctx["ro_list_ids"] = [r["id"] for r in _rows(data)]
+    add(_r("browse_lists", {"maxReturn": 30}, native=True, save=save_lists))
+
+    # Native get_list_members on a populated list yields a real lead id without
+    # creating anything. Lists can be empty, so walk the first several until one
+    # has members; the worked-list id is kept for custom_is_member_of_list.
+    def members_args(idx):
+        def _build(c):
+            ids = c.get("ro_list_ids") or []
+            if idx >= len(ids) or c.get("ro_lead_id"):
+                raise KeyError("no further list to probe / lead already found")
+            return {"listId": ids[idx]}
+        return _build
+
+    def save_lead_from_members(idx):
+        def _save(ctx, data):
+            rows = _rows(data)
+            if rows and not ctx.get("ro_lead_id"):
+                ctx["ro_lead_id"] = rows[0]["id"]
+                ctx["ro_lead_email"] = rows[0].get("email")
+                ctx["ro_list_id"] = ctx["ro_list_ids"][idx]
+        return _save
+
+    for _i in range(8):
+        add(_r("get_list_members", members_args(_i), native=True,
+               save=save_lead_from_members(_i),
+               notes="walk lists for a real lead id (stops once one is found)"))
+
+    # ---- programs (discovered early; also a backup lead source) ------------
+    add(_r("browse_programs", {"maxReturn": 5}, native=True,
+           save=_disc("ro_program_id", "id")))
+    add(_r("browse_programs", {"maxReturn": 5}, native=True,
+           save=_disc("ro_program_name", "name")))
+
+    def save_lead_from_program(ctx, data):
+        # Backup: only set a lead id if the list path found none.
+        if ctx.get("ro_lead_id"):
+            return
+        rows = _rows(data)
+        if rows:
+            ctx["ro_lead_id"] = rows[0]["id"]
+            ctx["ro_lead_email"] = rows[0].get("email")
+    add(_r("custom_get_leads_by_program",
+           lambda c: {"program_id": c["ro_program_id"], "fields": "id,email"},
+           skip_if=_have("ro_program_id"), save=save_lead_from_program))
+    add(_r("custom_query_program_members",
+           lambda c: {"program_id": c["ro_program_id"], "filter_type": "statusName",
+                      "filter_values": "member"},
+           skip_if=_have("ro_program_id")))
+
+    # ---- leads / lead schema (uses the lead id discovered above) ----------
+    add(_r("custom_get_leads_by_filter",
+           lambda c: {"filter_type": "email", "filter_values": [c["ro_lead_email"]],
+                      "fields": ["id", "email"]},
+           skip_if=_have("ro_lead_email")))
+    add(_r("custom_get_lead_by_id",
+           lambda c: {"lead_id": c["ro_lead_id"], "fields": "id,email"},
+           skip_if=_have("ro_lead_id")))
+    add(_r("custom_describe_lead2"))
+    add(_r("custom_get_lead_fields", {"batch_size": 5}))
+    add(_r("custom_get_lead_field_by_name", {"field_api_name": "email"}))
+    add(_r("custom_get_lead_partitions"))
+    add(_r("custom_get_lead_changes",
+           lambda c: {"lead_id": c["ro_lead_id"], "days_back": 1},
+           skip_if=_have("ro_lead_id")))
+    add(_r("custom_get_lead_activities_by_email",
+           lambda c: {"email": c["ro_lead_email"], "days_back": 1},
+           skip_if=_have("ro_lead_email")))
+    add(_r("custom_get_lead_list_membership",
+           lambda c: {"lead_id": c["ro_lead_id"]}, skip_if=_have("ro_lead_id")))
+    add(_r("custom_get_lead_program_membership",
+           lambda c: {"lead_id": c["ro_lead_id"]}, skip_if=_have("ro_lead_id")))
+    add(_r("custom_get_lead_smart_campaign_membership",
+           lambda c: {"lead_id": c["ro_lead_id"]}, skip_if=_have("ro_lead_id")))
+    add(_r("custom_get_deleted_leads",
+           {"since_datetime": _iso(datetime.now(timezone.utc) - timedelta(hours=1))}))
+
+    # ---- smart campaigns ---------------------------------------------------
+    add(_r("browse_smart_campaigns", {"maxReturn": 5}, native=True))
+
+    # ---- smart lists -------------------------------------------------------
+    add(_r("browse_smart_lists", {"maxReturn": 5}, native=True))
+
+    # ---- snippets ----------------------------------------------------------
+    add(_r("browse_snippets", {"maxReturn": 5}, native=True))
+
+    # ---- forms -------------------------------------------------------------
+    def save_form(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_form_id"] = rows[0]["id"]
+    add(_r("browse_forms", {"maxReturn": 5}, native=True, save=save_form))
+
+    # ---- landing pages -----------------------------------------------------
+    def save_lp(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_lp_id"] = rows[0]["id"]
+            ctx["ro_lp_name"] = rows[0].get("name")
+    add(_r("custom_browse_landing_pages", {"max_return": 5}, save=save_lp))
+    add(_r("custom_get_landing_page_by_id",
+           lambda c: {"landing_page_id": c["ro_lp_id"]}, skip_if=_have("ro_lp_id")))
+    add(_r("custom_get_landing_page_by_name",
+           lambda c: {"name": c["ro_lp_name"]}, skip_if=_have("ro_lp_name")))
+    add(_r("custom_get_landing_page_content",
+           lambda c: {"landing_page_id": c["ro_lp_id"]}, skip_if=_have("ro_lp_id")))
+    add(_r("custom_get_landing_page_full_content",
+           lambda c: {"landing_page_id": c["ro_lp_id"]}, skip_if=_have("ro_lp_id")))
+    add(_r("custom_get_landing_page_variables",
+           lambda c: {"landing_page_id": c["ro_lp_id"]}, skip_if=_have("ro_lp_id")))
+    add(_r("custom_get_landing_page_domains"))
+    add(_r("custom_browse_redirect_rules", {"max_return": 5}))
+
+    # ---- landing page templates -------------------------------------------
+    def save_lpt(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_lpt_id"] = rows[0]["id"]
+            ctx["ro_lpt_name"] = rows[0].get("name")
+    add(_r("custom_browse_landing_page_templates", {"max_return": 5}, save=save_lpt))
+    add(_r("custom_get_landing_page_template_by_id",
+           lambda c: {"template_id": c["ro_lpt_id"]}, skip_if=_have("ro_lpt_id")))
+    add(_r("custom_get_landing_page_template_by_name",
+           lambda c: {"name": c["ro_lpt_name"]}, skip_if=_have("ro_lpt_name")))
+    add(_r("custom_get_landing_page_template_content",
+           lambda c: {"template_id": c["ro_lpt_id"]}, skip_if=_have("ro_lpt_id")))
+
+    # ---- email templates ---------------------------------------------------
+    def save_etpl(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_etpl_id"] = rows[0]["id"]
+            ctx["ro_etpl_name"] = rows[0].get("name")
+    add(_r("custom_browse_email_templates", {"max_return": 5}, save=save_etpl))
+    add(_r("custom_get_email_template_by_id",
+           lambda c: {"template_id": c["ro_etpl_id"]}, skip_if=_have("ro_etpl_id")))
+    add(_r("custom_get_email_template_by_name",
+           lambda c: {"name": c["ro_etpl_name"]}, skip_if=_have("ro_etpl_name")))
+    add(_r("custom_get_email_template_content",
+           lambda c: {"template_id": c["ro_etpl_id"]}, skip_if=_have("ro_etpl_id")))
+    add(_r("custom_get_email_template_used_by",
+           lambda c: {"template_id": c["ro_etpl_id"]}, skip_if=_have("ro_etpl_id")))
+
+    # ---- emails ------------------------------------------------------------
+    def save_email(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_email_id"] = rows[0]["id"]
+    add(_r("browse_emails2", {"maxReturn": 5}, native=True, save=save_email))
+    add(_r("get_email_content", lambda c: {"id": c["ro_email_id"]}, native=True,
+           skip_if=_have("ro_email_id")))
+    add(_r("custom_preview_email",
+           lambda c: {"email_id": c["ro_email_id"]}, skip_if=_have("ro_email_id")))
+    add(_r("custom_get_email_variables",
+           lambda c: {"email_id": c["ro_email_id"]}, skip_if=_have("ro_email_id")))
+    add(_r("custom_get_email_cc_fields"))
+
+    # ---- list membership (list + lead discovered earlier) -----------------
+    add(_r("custom_is_member_of_list",
+           lambda c: {"list_id": c["ro_list_id"], "lead_ids": [c["ro_lead_id"]]},
+           skip_if=_have("ro_list_id", "ro_lead_id")))
+
+    # ---- files -------------------------------------------------------------
+    def save_file(ctx, data):
+        rows = _rows(data)
+        if rows:
+            ctx["ro_file_id"] = rows[0]["id"]
+            ctx["ro_file_name"] = rows[0].get("name")
+    add(_r("custom_browse_files", {"max_return": 10}, save=save_file))
+    add(_r("custom_get_file_by_id",
+           lambda c: {"file_id": c["ro_file_id"]}, skip_if=_have("ro_file_id")))
+    add(_r("custom_get_file_by_name",
+           lambda c: {"name": c["ro_file_name"]}, skip_if=_have("ro_file_name")))
+
+    # ---- segmentations -----------------------------------------------------
+    def save_seg(ctx, data):
+        for seg in _rows(data):
+            if seg.get("status") == "approved":
+                ctx["ro_seg_id"] = seg["id"]
+                return
+        rows = _rows(data)
+        if rows:
+            ctx["ro_seg_id"] = rows[0]["id"]
+    add(_r("custom_browse_segmentations", save=save_seg))
+    add(_r("custom_get_segments",
+           lambda c: {"segmentation_id": c["ro_seg_id"]}, skip_if=_have("ro_seg_id")))
+
+    # ---- activity / custom-object / CRM schema (pure reads) ----------------
+    add(_r("custom_get_custom_activity_types"))
+    add(_r("custom_list_custom_object_types"))
+    add(_r("custom_get_custom_object_field_types"))
+    add(_r("custom_get_custom_object_linkable_objects"))
+    add(_r("custom_describe_companies"))
+    add(_r("custom_describe_opportunities"))
+    add(_r("custom_describe_opportunity_roles"))
+    add(_r("custom_describe_sales_persons"))
+    add(_r("custom_describe_named_accounts", skip_on=[("abm", "abm-not-enabled")]))
+
+    # ---- bulk job listings + usage stats (read-only) -----------------------
+    add(_r("custom_list_lead_export_jobs", {"batch_size": 10}))
+    add(_r("custom_list_activity_export_jobs", {"batch_size": 10}))
+    add(_r("custom_list_program_member_export_jobs", {"batch_size": 10}))
+    add(_r("custom_get_daily_usage"))
+    add(_r("custom_get_weekly_usage"))
+    add(_r("custom_get_daily_errors"))
+    add(_r("custom_get_weekly_errors"))
+    add(_r("custom_list_workspaces"))
+
+    return steps
+
+
+# ---------------------------------------------------------------------------
 # Full-mode orchestration
 # ---------------------------------------------------------------------------
 
 def _full_headers():
-    _load_env_sandbox()
+    _load_env_files()
     missing = [k for k in ("MARKETO_CLIENT_ID", "MARKETO_CLIENT_SECRET", "MARKETO_MUNCHKIN_ID")
                if not os.environ.get(k)]
     if missing:
-        print(f"Missing credentials ({', '.join(missing)}); set env vars or .env.sandbox.")
+        print(f"Missing credentials ({', '.join(missing)}); set env vars or .env / .env.sandbox.")
         sys.exit(2)
     return {
         "X-Marketo-Client-Id": os.environ["MARKETO_CLIENT_ID"],
@@ -1883,7 +2126,7 @@ async def _wait_for_server(headers, timeout=30):
     raise RuntimeError(f"blended server did not become ready: {last_exc}")
 
 
-async def _run_full_suite(headers, steps):
+async def _run_full_suite(headers, steps, read_only=False):
     runner = FullSuiteRunner(FULL_URL, headers)
     await runner.connect()
     try:
@@ -1895,6 +2138,12 @@ async def _run_full_suite(headers, steps):
             print("FATAL: no native tools listed — Munchkin ID not allowlisted for "
                   "Adobe's native MCP? The full suite needs native infrastructure tools.")
             return None, custom_names
+        if read_only:
+            # Hard guard: the read-only pass must never run a mutating step.
+            offenders = [s["tool"] for s in steps if s["write"]]
+            if offenders:
+                raise AssertionError(
+                    f"read-only run contains write steps: {offenders}")
         ctx = {}
         for st in steps:
             try:
@@ -1909,26 +2158,58 @@ async def _run_full_suite(headers, steps):
         await runner.close()
 
 
-def run_full_mode(dry_run=False, suffix=None, group=None):
-    sfx = suffix or datetime.now().strftime("%m%d%H%M%S")
-    steps = build_full_steps(sfx)
+def _plan_steps(mode, sfx, group=None):
+    """Assemble the step list for a run mode.
+
+    mode 'readonly' -> discovery read pass only (zero mutations).
+    mode 'write'    -> the create/update/delete lifecycle (existing full suite).
+    mode 'full'     -> read pass + write lifecycle (coverage asserted on union).
+    A group filter (only meaningful for write/full) narrows to bulk steps.
+    """
+    readonly = build_readonly_steps()
+    lifecycle = build_full_steps(sfx)
+    if mode == "readonly":
+        steps = readonly
+    elif mode == "write":
+        steps = lifecycle
+    else:  # full
+        steps = readonly + lifecycle
     if group:
+        # Groups only apply to the write lifecycle's tagged bulk steps.
         steps = [s for s in steps if group in s["groups"]]
         print(f"Group '{group}': {len(steps)} steps selected "
               f"(bulk steps + minimal prerequisites/cleanup)")
+    return steps
+
+
+def run_full_mode(dry_run=False, suffix=None, group=None, mode="full"):
+    sfx = suffix or datetime.now().strftime("%m%d%H%M%S")
+    steps = _plan_steps(mode, sfx, group)
+    read_only = mode == "readonly"
 
     custom_names = _local_custom_tool_names()
-    # Full custom-tool coverage is only asserted when everything runs.
-    uncovered = [] if group else _coverage_report(steps, custom_names)
+    # Full custom-tool coverage is only asserted for the run-everything FULL
+    # mode (read pass ∪ write lifecycle). Read-only / write-only / group runs
+    # intentionally cover a subset.
+    enforce_coverage = mode == "full" and not group
+    uncovered = _coverage_report(steps, custom_names) if enforce_coverage else []
 
     if dry_run:
-        print(f"DRY RUN — {len(steps)} planned steps (run suffix {sfx}):\n")
+        print(f"DRY RUN — mode={mode} — {len(steps)} planned steps "
+              f"(run suffix {sfx}):\n")
         for i, st in enumerate(steps, 1):
             kind = "NATIVE-SMOKE" if st["smoke"] else ("NATIVE" if st["native"] else "CUSTOM")
+            rw = "W" if st["write"] else "R"
             note = f"  -- {st['notes']}" if st["notes"] else ""
-            print(f"[{i:3d}] {kind:<12} {st['tool']}{note}")
-        if group:
-            print(f"\nGroup '{group}': {len(steps)} steps (coverage check skipped)")
+            print(f"[{i:3d}] {rw} {kind:<12} {st['tool']}{note}")
+        if read_only:
+            offenders = [s["tool"] for s in steps if s["write"]]
+            print(f"\nRead-only plan: {len(steps)} steps, "
+                  f"{len(offenders)} write steps (must be 0).")
+            sys.exit(0 if not offenders else 1)
+        if not enforce_coverage:
+            print(f"\nmode={mode}{' group=' + group if group else ''}: "
+                  f"{len(steps)} steps (full coverage check skipped)")
             sys.exit(0)
         custom_stepped = {s["tool"] for s in steps if not (s["native"] or s["smoke"])}
         print(f"\nCustom tools registered: {len(custom_names)}; "
@@ -1939,17 +2220,18 @@ def run_full_mode(dry_run=False, suffix=None, group=None):
         sys.exit(0 if not uncovered else 1)
 
     headers = _full_headers()
-    print(f"Run suffix: {sfx}  |  {len(steps)} steps planned")
+    print(f"Mode: {mode}  |  Run suffix: {sfx}  |  {len(steps)} steps planned")
     started = time.time()
     proc = _start_blended_server()
     try:
         asyncio.run(_wait_for_server(headers))
-        records, server_custom = asyncio.run(_run_full_suite(headers, steps))
+        records, server_custom = asyncio.run(
+            _run_full_suite(headers, steps, read_only=read_only))
         if records is None:
             sys.exit(2)
         # Coverage is asserted against the *live* server's tool list
-        # (only in the default run-everything mode).
-        uncovered = [] if group else _coverage_report(steps, server_custom)
+        # (only in the run-everything FULL mode).
+        uncovered = _coverage_report(steps, server_custom) if enforce_coverage else []
         counts = _print_summary(records, uncovered, time.time() - started)
         sys.exit(0 if counts[FAIL] == 0 and not uncovered else 1)
     finally:
@@ -1960,43 +2242,116 @@ def run_full_mode(dry_run=False, suffix=None, group=None):
             proc.kill()
 
 
-def _print_groups_help():
-    print("Available --group values for full mode:")
+def _prompt_full_options(allow_group=True):
+    """Interactively collect the full-suite options (all optional)."""
+    dry = input("Dry run — print the planned steps without calling Marketo? (y/N): "
+                ).strip().lower() in ("y", "yes")
+    sfx = input("Run suffix (Enter for an auto timestamp): ").strip() or None
+    if not allow_group:
+        return dry, sfx, None
+    print("\nAvailable groups (Enter to run everything and assert full coverage):")
     for g in AVAILABLE_GROUPS:
-        print(f"  {g}")
-    print("Without --group, the full suite runs every step and asserts "
-          "complete custom-tool coverage.")
+        print(f"    - {g}")
+    grp = input("Group: ").strip() or None
+    if grp and grp not in AVAILABLE_GROUPS:
+        print(f"Unknown group: {grp!r}. Running the full suite instead.")
+        grp = None
+    return dry, sfx, grp
+
+
+def _parse_cli(argv):
+    """Parse the optional CLI subcommand. Returns a dict or None (interactive).
+
+    Subcommands (all preserve their historical behavior):
+      live
+      full     [--dry-run] [--suffix X] [--group bulk-export|bulk-import]
+      readonly [--dry-run] [--suffix X]   (discovery read pass; zero mutations)
+      write    [--dry-run] [--suffix X] [--group ...]  (create/update/delete)
+    """
+    if not argv:
+        return None
+    cmd = argv[0].lower()
+    if cmd not in ("live", "full", "readonly", "write"):
+        return None
+    opts = {"cmd": cmd, "dry_run": False, "suffix": None, "group": None}
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--dry-run":
+            opts["dry_run"] = True
+        elif arg == "--suffix":
+            i += 1
+            opts["suffix"] = argv[i]
+        elif arg == "--group":
+            i += 1
+            opts["group"] = argv[i]
+        elif arg.startswith("--group="):
+            opts["group"] = arg.split("=", 1)[1]
+        elif arg.startswith("--suffix="):
+            opts["suffix"] = arg.split("=", 1)[1]
+        else:
+            print(f"Unknown argument: {arg!r}")
+            sys.exit(2)
+        i += 1
+    if opts["group"] and opts["group"] not in AVAILABLE_GROUPS:
+        print(f"Unknown group: {opts['group']!r}. Available: {', '.join(AVAILABLE_GROUPS)}")
+        sys.exit(2)
+    return opts
+
+
+def _dispatch_cli(opts):
+    cmd = opts["cmd"]
+    if cmd == "live":
+        run_live_mode()
+    elif cmd == "full":
+        run_full_mode(dry_run=opts["dry_run"], suffix=opts["suffix"],
+                      group=opts["group"], mode="full")
+    elif cmd == "readonly":
+        run_full_mode(dry_run=opts["dry_run"], suffix=opts["suffix"],
+                      group=None, mode="readonly")
+    elif cmd == "write":
+        run_full_mode(dry_run=opts["dry_run"], suffix=opts["suffix"],
+                      group=opts["group"], mode="write")
+
+
+# Maps the interactive menu choices onto the same machinery as the CLI:
+#   1 -> readonly   2 -> write   3 -> full
+#   4 -> full --group bulk-export   5 -> full --group bulk-import
+#   6 -> live
+def _run_menu():
+    print("=" * 60)
+    print("Blended Marketo MCP - Test Suite")
+    print("=" * 60)
+    print("\nSelect what to run:")
+    print("    1. Read-only tests (safe, no modifications)")
+    print("    2. Write-only tests (create, clone, update, delete — "
+          "MCPTEST_FULL_* assets, auto-cleaned)")
+    print("    3. Full tests (read-only + write operations)")
+    print("    4. Bulk-export tests (tiny jobs)")
+    print("    5. Bulk-import tests (tiny jobs)")
+    print("    6. Live mode (quick single smoke call against a running server)")
+
+    choice = input("\nSelect test mode (1-6): ").strip()
+
+    if choice == "2":
+        dry, sfx, _ = _prompt_full_options(allow_group=False)
+        run_full_mode(dry_run=dry, suffix=sfx, mode="write")
+    elif choice == "3":
+        dry, sfx, _ = _prompt_full_options(allow_group=False)
+        run_full_mode(dry_run=dry, suffix=sfx, mode="full")
+    elif choice == "4":
+        run_full_mode(group=BULK_EXPORT, mode="full")
+    elif choice == "5":
+        run_full_mode(group=BULK_IMPORT, mode="full")
+    elif choice == "6":
+        run_live_mode()
+    else:
+        run_full_mode(mode="readonly")
 
 
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "stub"
-    if mode == "stub":
-        run_stub_mode()
-    elif mode == "live":
-        run_live_mode()
-    elif mode == "full":
-        rest = sys.argv[2:]
-        if "--help" in rest or "-h" in rest:
-            print(__doc__)
-            _print_groups_help()
-            sys.exit(0)
-        dry = "--dry-run" in rest
-        sfx = None
-        if "--suffix" in rest:
-            sfx = sys.argv[sys.argv.index("--suffix") + 1]
-        grp = None
-        if "--group" in rest:
-            try:
-                grp = sys.argv[sys.argv.index("--group") + 1]
-            except IndexError:
-                print("--group requires a value.\n")
-                _print_groups_help()
-                sys.exit(2)
-            if grp not in AVAILABLE_GROUPS:
-                print(f"Unknown group: {grp!r}\n")
-                _print_groups_help()
-                sys.exit(2)
-        run_full_mode(dry_run=dry, suffix=sfx, group=grp)
+    _cli = _parse_cli(sys.argv[1:])
+    if _cli is not None:
+        _dispatch_cli(_cli)
     else:
-        print(__doc__)
-        sys.exit(1)
+        _run_menu()

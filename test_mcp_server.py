@@ -1,29 +1,34 @@
 """
 Test script for mcp_server.py - calls tools through the MCP protocol.
 
-Interactive run: python test_mcp_server.py
-    Connects to an MCP server already running on http://localhost:8000/mcp.
-    Start the server first: python mcp_server.py (or python mcp_server_auth.py)
-    Prompts for a test mode (1=read-only, 2=write, 3=full) and for any
-    asset names/emails it needs. Inputs are saved to test_config.json.
+Run it with no arguments and choose what to do at the menu:
 
-Auto run: python test_mcp_server.py --auto
-    Fully self-contained, non-interactive FULL-COVERAGE suite. Starts
-    mcp_server.py itself as a subprocess on port 8010 (credentials passed
-    through the environment), waits for readiness, then drives a
-    dependency-ordered step engine (modeled on test_blended_server.py's full
-    mode) that exercises EVERY tool the server exposes - the 42 legacy
-    unprefixed tools plus all 255 custom_* tools. Credentials come from .env
-    with a fallback to .env.sandbox (MARKETO_CLIENT_ID / MARKETO_CLIENT_SECRET
-    / MARKETO_MUNCHKIN_ID, with MARKETO_BASE_URL derived).
+    python3 test_mcp_server.py
+
+Interactive tests (menu options 1-3)
+    Connect to an MCP server already running on http://localhost:8000/mcp.
+    Start the server first: python mcp_server.py (or python mcp_server_auth.py).
+    1=read-only, 2=write, 3=full. Prompts for any asset names/emails it
+    needs; inputs are saved to test_config.json.
+
+Automated full-coverage suite (menu options 4-6)
+    Fully self-contained FULL-COVERAGE suite. Starts mcp_server.py itself as
+    a subprocess on port 8010 (credentials passed through the environment),
+    waits for readiness, then drives a dependency-ordered step engine
+    (modeled on test_blended_server.py's full mode).
+    4=every tool (the 42 legacy unprefixed tools plus all 255 custom_* tools),
+    5=bulk-export steps only, 6=bulk-import steps only. Credentials come from
+    .env with a fallback to .env.sandbox (MARKETO_CLIENT_ID /
+    MARKETO_CLIENT_SECRET / MARKETO_MUNCHKIN_ID, with MARKETO_BASE_URL
+    derived).
 
     All created assets are named MCPTEST_LEG_* and removed at the end; a
     sweep also clears MCPTEST_LEG_* leftovers at start and end so reruns are
     repeatable. Objects Marketo cannot delete via API (lead / program-member
     fields, the custom activity type, the custom object type) use fixed
     names with reuse-if-exists semantics. Steps are classified PASS / SKIP
-    (with a reason) / FAIL; exit code is non-zero on any FAIL or uncovered
-    tool.
+    (with a reason) / FAIL; the process exits non-zero on any FAIL or
+    uncovered tool (full coverage is only enforced for option 4).
 
     Notable chains (each tests several operations in one flow):
       - custom_sync_leads(createOnly) -> custom_sync_leads(createDuplicate)
@@ -33,15 +38,12 @@ Auto run: python test_mcp_server.py --auto
       - import batch -> status poll -> failures -> warnings
       - export create -> enqueue -> status poll -> file (+ cancel on a 2nd job)
 
-Group runs: python test_mcp_server.py --group bulk-export
-            python test_mcp_server.py --group bulk-import
-    Run ONLY the bulk-export / bulk-import tool steps plus minimal
-    prerequisites. Export jobs are tiny (activity window = a few minutes
-    around this run; program-member / custom-object exports scoped to this
-    run's assets); imports are 2-3 rows. Exit code reflects FAILs only.
+    The bulk-export / bulk-import options (5 and 6) run ONLY those tool steps
+    plus minimal prerequisites. Export jobs are tiny (activity window = a few
+    minutes around this run; program-member / custom-object exports scoped to
+    this run's assets); imports are 2-3 rows.
 """
 
-import argparse
 import asyncio
 import inspect
 import json
@@ -121,7 +123,12 @@ def resolve_credentials():
     sandbox = parse_env_file(ENV_SANDBOX_FILE)
     client_id = os.environ.get('MARKETO_CLIENT_ID') or sandbox.get('MARKETO_CLIENT_ID')
     client_secret = os.environ.get('MARKETO_CLIENT_SECRET') or sandbox.get('MARKETO_CLIENT_SECRET')
-    base_url = os.environ.get('MARKETO_BASE_URL') or sandbox.get('MARKETO_BASE_URL')
+    base_url = os.environ.get('MARKETO_BASE_URL')
+    # Prefer .env: it may carry only MARKETO_MUNCHKIN_ID, so derive the base
+    # URL from it before falling back to .env.sandbox.
+    if not base_url and os.environ.get('MARKETO_MUNCHKIN_ID'):
+        base_url = f"https://{os.environ['MARKETO_MUNCHKIN_ID']}.mktorest.com"
+    base_url = base_url or sandbox.get('MARKETO_BASE_URL')
     if not base_url and sandbox.get('MARKETO_MUNCHKIN_ID'):
         base_url = f"https://{sandbox['MARKETO_MUNCHKIN_ID']}.mktorest.com"
 
@@ -2503,11 +2510,36 @@ def build_full_steps(sfx, R, group=None):
                  notes='created (not enqueued) purely so the cancel tool has a target'))
         add(step('custom_cancel_lead_export_job', lambda c: {'export_id': c['lead_export']},
                  skip_if=_need('lead_export')))
-        add(step('custom_create_activity_export_job',
-                 lambda c: {'start_at': _iso(run_start - timedelta(minutes=5)),
-                            'end_at': _iso(datetime.now(timezone.utc))},
+        # Scope the activity export by activity_type_ids so it can NEVER pull a
+        # large file: the createdAt window alone could still match heavy traffic
+        # on a busy instance, but pinning a handful of type ids caps it to a few
+        # rows. Prefer the custom activity type this run generates (set in
+        # section K under `full`); always add common standard types (Visit
+        # Webpage / Fill Out Form / Click Email) so the cap holds in
+        # `--group bulk-export` too.
+        def save_act_type_ids(ctx, data):
+            wanted = {'visit webpage', 'fill out form', 'click email'}
+            ids = [t['id'] for t in (data.get('result') or [])
+                   if str(t.get('name', '')).strip().lower() in wanted]
+            if ctx.get('act_type_id'):
+                ids.append(ctx['act_type_id'])
+            if not ids and (data.get('result') or []):
+                ids = [data['result'][0]['id']]
+            ctx['act_export_type_ids'] = ids
+        add(step('get_activity_types', save=save_act_type_ids,
+                 notes='discover activity_type_ids to cap the activity export'))
+
+        def activity_export_args(c):
+            # createdAt window AND an activity_type_ids scope — the type scope is
+            # the hard cap that keeps the job tiny regardless of instance traffic.
+            args = {'start_at': _iso(run_start - timedelta(minutes=5)),
+                    'end_at': _iso(datetime.now(timezone.utc))}
+            if c.get('act_export_type_ids'):
+                args['activity_type_ids'] = c['act_export_type_ids']
+            return args
+        add(step('custom_create_activity_export_job', activity_export_args,
                  save=_save_key('act_export', 'result', 0, 'exportId'),
-                 notes='tiny window: a few minutes around this run'))
+                 notes='tiny window AND activity_type_ids scope (capped)'))
         add(step('custom_enqueue_activity_export_job', lambda c: {'export_id': c['act_export']},
                  skip_if=_need('act_export'), skip_on=[('1029', 'export-queue-full')]))
         add(step('custom_get_activity_export_job_status',
@@ -2516,9 +2548,7 @@ def build_full_steps(sfx, R, group=None):
         add(step('custom_get_activity_export_file', lambda c: {'export_id': c['act_export']},
                  skip_if=lambda c: (None if (c.get('act_export') and c.get('act_export_done'))
                                     else 'export job still pending after poll window')))
-        add(step('custom_create_activity_export_job',
-                 lambda c: {'start_at': _iso(run_start - timedelta(minutes=5)),
-                            'end_at': _iso(datetime.now(timezone.utc))},
+        add(step('custom_create_activity_export_job', activity_export_args,
                  name='custom_create_activity_export_job(cancel-target)',
                  save=_save_key('act_export2', 'result', 0, 'exportId')))
         add(step('custom_cancel_activity_export_job',
@@ -2848,54 +2878,32 @@ async def run_auto_suite(creds, group=None):
 # Main
 # ============================================================================
 
-async def main():
+async def run_auto_mode(group):
+    """Self-managed full-coverage suite (started from the interactive menu)."""
     global AUTO_MODE
+    AUTO_MODE = True
+    label = group or 'full coverage'
+    print(f"\nMode: AUTO ({label}, non-interactive, self-managed server on :{AUTO_PORT})")
+    creds = resolve_credentials()
+    if not creds:
+        print("ERROR: Marketo credentials not found in environment, .env, or .env.sandbox")
+        sys.exit(1)
+    server_proc, _ = start_mcp_server(creds, AUTO_PORT)
+    try:
+        exit_code = await run_auto_suite(creds, group)
+    finally:
+        stop_mcp_server(server_proc)
+    sys.exit(exit_code)
 
-    parser = argparse.ArgumentParser(description="Test suite for mcp_server.py (via MCP protocol)")
-    parser.add_argument('--auto', action='store_true',
-                        help="Run the FULL-COVERAGE suite non-interactively: starts "
-                             "mcp_server.py as a subprocess on port 8010, exercises every "
-                             "tool with MCPTEST_LEG_* assets, always cleans up; exits "
-                             "non-zero on FAIL or uncovered tools")
-    parser.add_argument('--group', choices=[GROUP_EXPORT, GROUP_IMPORT],
-                        help="Run only the bulk-export or bulk-import steps plus minimal "
-                             "prerequisites (implies --auto)")
-    args = parser.parse_args()
-    AUTO_MODE = args.auto or bool(args.group)
 
-    load_test_config()
-
-    mcp_api_key = os.environ.get("MCP_API_KEY")
-
-    print("=" * 60)
-    print("MCP Server - Tool Test Suite")
-    print("=" * 60)
-
-    if AUTO_MODE:
-        mode = args.group or 'full coverage'
-        print(f"\nMode: AUTO ({mode}, non-interactive, self-managed server on :{AUTO_PORT})")
-        creds = resolve_credentials()
-        if not creds:
-            print("ERROR: Marketo credentials not found in environment, .env, or .env.sandbox")
-            sys.exit(1)
-        server_proc, _ = start_mcp_server(creds, AUTO_PORT)
-        try:
-            exit_code = await run_auto_suite(creds, args.group)
-        finally:
-            stop_mcp_server(server_proc)
-        sys.exit(exit_code)
-
+async def run_interactive_mode(choice, mcp_api_key):
+    """Run read-only / write / full tests against an already-running server."""
     print(f"\nConnects to the MCP server at {MCP_SERVER_URL}")
     print("Make sure the server is running: python mcp_server.py (or mcp_server_auth.py)")
     if mcp_api_key:
         print("Auth: Bearer token from MCP_API_KEY detected")
     else:
         print("Auth: None (set MCP_API_KEY in .env for mcp_server_auth.py)")
-    print("\n1. Read-only tests (safe, no modifications)")
-    print("2. Write-only tests (create, clone, update, delete)")
-    print("3. Full tests (read-only + write operations)")
-
-    choice = input("\nSelect test mode (1, 2, or 3): ").strip()
 
     client = Client(MCP_SERVER_URL, auth=mcp_api_key)
 
@@ -2921,6 +2929,36 @@ async def main():
         print("\nSkipped tests:")
         for name, reason in skip_reasons:
             print(f"  - {name}: {reason}")
+
+
+async def main():
+    load_test_config()
+
+    mcp_api_key = os.environ.get("MCP_API_KEY")
+
+    print("=" * 60)
+    print("MCP Server - Tool Test Suite")
+    print("=" * 60)
+    print("\nSelect what to run:")
+    print("\n  Interactive tests (need a server already running on :8000 —")
+    print("  start it first: python mcp_server.py or python mcp_server_auth.py):")
+    print("    1. Read-only tests (safe, no modifications)")
+    print("    2. Write-only tests (create, clone, update, delete)")
+    print("    3. Full tests (read-only + write operations)")
+    print("\n  Automated full-coverage suite (self-starts a server on :8010,")
+    print("  creates and then deletes MCPTEST_LEG_* assets):")
+    print("    4. Auto - every tool (full coverage)")
+    print("    5. Auto - bulk-export steps only")
+    print("    6. Auto - bulk-import steps only")
+
+    choice = input("\nSelect test mode (1-6): ").strip()
+
+    if choice in ('4', '5', '6'):
+        group = {'5': GROUP_EXPORT, '6': GROUP_IMPORT}.get(choice)
+        await run_auto_mode(group)
+        return
+
+    await run_interactive_mode(choice, mcp_api_key)
 
 
 if __name__ == '__main__':

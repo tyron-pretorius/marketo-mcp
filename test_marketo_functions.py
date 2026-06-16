@@ -1,17 +1,23 @@
 """
 Test script for marketo_functions.py - calls functions directly.
 
-Interactive run: python test_marketo_functions.py
-    Prompts for a test mode (1=read-only, 2=write, 3=full) and for any
-    asset names/emails it needs. Inputs are saved to test_config.json.
+Run it with no arguments and choose what to do at the menu:
 
-Auto run: python test_marketo_functions.py --auto
+    python3 test_marketo_functions.py
+
+Interactive tests (menu options 1-3)
+    1=read-only, 2=write, 3=full. Prompts for any asset names/emails it
+    needs; inputs are saved to test_config.json.
+
+Automated full-coverage suite (menu options 4-6)
     Non-interactive FULL-COVERAGE suite: a dependency-ordered step engine
     (modeled on test_blended_server.py's full mode) exercises EVERY public
-    function in marketo_functions.py against a real sandbox. Credentials are
-    loaded from .env (via marketo_functions) with a fallback to .env.sandbox
-    (MARKETO_CLIENT_ID / MARKETO_CLIENT_SECRET / MARKETO_MUNCHKIN_ID, with
-    MARKETO_BASE_URL derived as https://{munchkin}.mktorest.com).
+    function in marketo_functions.py against a real sandbox.
+    4=every function, 5=bulk-export steps only, 6=bulk-import steps only.
+    Credentials are loaded from .env (via marketo_functions) with a fallback
+    to .env.sandbox (MARKETO_CLIENT_ID / MARKETO_CLIENT_SECRET /
+    MARKETO_MUNCHKIN_ID, with MARKETO_BASE_URL derived as
+    https://{munchkin}.mktorest.com).
 
     All created assets are named MCPTEST_LEG_* and removed at the end; a
     sweep also clears MCPTEST_LEG_* leftovers at start and end so reruns are
@@ -19,8 +25,9 @@ Auto run: python test_marketo_functions.py --auto
     fields, the custom activity type, the custom object type) use fixed
     names with reuse-if-exists semantics. Steps are classified PASS / SKIP
     (with a reason: feature not enabled, state-dependent rejection, pending
-    bulk job, ...) / FAIL. Exit code is non-zero if anything FAILs or any
-    public function is left uncovered.
+    bulk job, ...) / FAIL. The process exits non-zero if anything FAILs or
+    any public function is left uncovered (full coverage is only enforced for
+    option 4).
 
     Notable chains (each tests several operations in one flow):
       - syncLeads(createOnly) -> syncLeads(createDuplicate) -> mergeLeads
@@ -28,17 +35,13 @@ Auto run: python test_marketo_functions.py --auto
       - import batch -> status poll -> failures -> warnings
       - export create -> enqueue -> status poll -> file (+ cancel on a 2nd job)
 
-Group runs: python test_marketo_functions.py --group bulk-export
-            python test_marketo_functions.py --group bulk-import
-    Run ONLY the bulk-export / bulk-import steps plus minimal prerequisites
-    (a few leads, one program, the custom object type). Export jobs are kept
-    tiny: the activity window covers just this run's own activities, and the
-    program-member / custom-object exports are scoped to this run's assets.
-    Imports are 2-3 rows. Exit code reflects FAILs only (full coverage is
-    not enforced for group runs).
+    The bulk-export / bulk-import options (5 and 6) run ONLY those steps plus
+    minimal prerequisites (a few leads, one program, the custom object type).
+    Export jobs are kept tiny: the activity window covers just this run's own
+    activities, and the program-member / custom-object exports are scoped to
+    this run's assets. Imports are 2-3 rows.
 """
 
-import argparse
 import inspect
 import json
 import os
@@ -111,7 +114,13 @@ def ensure_credentials():
     sandbox = parse_env_file(ENV_SANDBOX_FILE)
     client_id = marketo_functions.client_id or sandbox.get('MARKETO_CLIENT_ID')
     client_secret = marketo_functions.client_secret or sandbox.get('MARKETO_CLIENT_SECRET')
-    base_url = marketo_functions.base_url or sandbox.get('MARKETO_BASE_URL')
+    # Prefer .env: marketo_functions reads MARKETO_BASE_URL directly, but .env
+    # may carry only MARKETO_MUNCHKIN_ID, so derive the base URL from it before
+    # falling back to .env.sandbox.
+    base_url = marketo_functions.base_url
+    if not base_url and os.environ.get('MARKETO_MUNCHKIN_ID'):
+        base_url = f"https://{os.environ['MARKETO_MUNCHKIN_ID']}.mktorest.com"
+    base_url = base_url or sandbox.get('MARKETO_BASE_URL')
     if not base_url and sandbox.get('MARKETO_MUNCHKIN_ID'):
         base_url = f"https://{sandbox['MARKETO_MUNCHKIN_ID']}.mktorest.com"
 
@@ -2507,12 +2516,37 @@ def build_full_steps(sfx, R, group=None):
                  notes='created (not enqueued) purely so cancelLeadExportJob has a target'))
         add(step(mf.cancelLeadExportJob, lambda c: {'exportId': c['lead_export']},
                  skip_if=_need('lead_export')))
-        # activities: window covers only this run's own activities
-        add(step(mf.createActivityExportJob,
-                 lambda c: {'startAt': _iso(run_start - timedelta(minutes=5)),
-                            'endAt': _iso(datetime.now(timezone.utc))},
+        # activities: window covers only this run's own activities AND is scoped
+        # by activityTypeIds so the export can NEVER pull a large file. The
+        # createdAt window alone could still match heavy traffic on a busy
+        # instance; pinning a handful of type ids caps it to a few rows. Prefer
+        # the custom activity type this run generates (set in section K under
+        # `full`); always add common standard types (Visit Webpage / Fill Out
+        # Form / Click Email) so the cap holds in `--group bulk-export` too.
+        def save_act_type_ids(ctx, data):
+            wanted = {'visit webpage', 'fill out form', 'click email'}
+            ids = [t['id'] for t in (data.get('result') or [])
+                   if str(t.get('name', '')).strip().lower() in wanted]
+            if ctx.get('act_type_id'):
+                ids.append(ctx['act_type_id'])
+            if not ids and (data.get('result') or []):
+                ids = [data['result'][0]['id']]
+            ctx['act_export_type_ids'] = ids
+        add(step(mf.getActivityTypes, save=save_act_type_ids,
+                 name='getActivityTypes(export-scope)',
+                 notes='discover activityTypeIds to cap the activity export'))
+
+        def activity_export_args(c):
+            # createdAt window AND an activityTypeIds scope — the type scope is
+            # the hard cap that keeps the job tiny regardless of instance traffic.
+            args = {'startAt': _iso(run_start - timedelta(minutes=5)),
+                    'endAt': _iso(datetime.now(timezone.utc))}
+            if c.get('act_export_type_ids'):
+                args['activityTypeIds'] = c['act_export_type_ids']
+            return args
+        add(step(mf.createActivityExportJob, activity_export_args,
                  save=_save_key('act_export', 'result', 0, 'exportId'),
-                 notes='tiny window: a few minutes around this run'))
+                 notes='tiny window AND activityTypeIds scope (capped)'))
         add(step(mf.enqueueActivityExportJob, lambda c: {'exportId': c['act_export']},
                  skip_if=_need('act_export'),
                  skip_on=[('1029', 'export-queue-full')]))
@@ -2522,9 +2556,7 @@ def build_full_steps(sfx, R, group=None):
         add(step(mf.getActivityExportFile, lambda c: {'exportId': c['act_export']},
                  skip_if=lambda c: (None if (c.get('act_export') and c.get('act_export_done'))
                                     else 'export job still pending after poll window')))
-        add(step(mf.createActivityExportJob,
-                 lambda c: {'startAt': _iso(run_start - timedelta(minutes=5)),
-                            'endAt': _iso(datetime.now(timezone.utc))},
+        add(step(mf.createActivityExportJob, activity_export_args,
                  name='createActivityExportJob(cancel-target)',
                  save=_save_key('act_export2', 'result', 0, 'exportId')))
         add(step(mf.cancelActivityExportJob, lambda c: {'exportId': c['act_export2']},
@@ -2879,17 +2911,6 @@ def run_auto_suite(group=None):
 # ============================================================================
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Test suite for marketo_functions.py")
-    parser.add_argument('--auto', action='store_true',
-                        help="Run the FULL-COVERAGE suite non-interactively "
-                             "(creates MCPTEST_LEG_* assets, always cleans up, "
-                             "exits non-zero on FAIL or uncovered functions)")
-    parser.add_argument('--group', choices=[GROUP_EXPORT, GROUP_IMPORT],
-                        help="Run only the bulk-export or bulk-import steps "
-                             "plus minimal prerequisites (implies --auto)")
-    args = parser.parse_args()
-    AUTO_MODE = args.auto or bool(args.group)
-
     if not ensure_credentials():
         print("ERROR: Marketo credentials not found in environment, .env, or .env.sandbox")
         sys.exit(1)
@@ -2899,18 +2920,26 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Marketo Functions - Direct Test Suite")
     print("=" * 60)
+    print("\nSelect what to run:")
+    print("\n  Interactive tests:")
+    print("    1. Read-only tests (safe, no modifications)")
+    print("    2. Write-only tests (create, clone, update, delete)")
+    print("    3. Full tests (read-only + write operations)")
+    print("\n  Automated full-coverage suite (creates and then deletes")
+    print("  MCPTEST_LEG_* assets):")
+    print("    4. Auto - every function (full coverage)")
+    print("    5. Auto - bulk-export steps only")
+    print("    6. Auto - bulk-import steps only")
 
-    if AUTO_MODE:
-        mode = args.group or 'full coverage'
-        print(f"\nMode: AUTO ({mode}, non-interactive)")
-        run_auto_suite(args.group)
+    choice = input("\nSelect test mode (1-6): ").strip()
+
+    if choice in ('4', '5', '6'):
+        AUTO_MODE = True
+        group = {'5': GROUP_EXPORT, '6': GROUP_IMPORT}.get(choice)
+        label = group or 'full coverage'
+        print(f"\nMode: AUTO ({label}, non-interactive)")
+        run_auto_suite(group)   # exits the process when finished
     else:
-        print("\n1. Read-only tests (safe, no modifications)")
-        print("2. Write-only tests (create, clone, update, delete)")
-        print("3. Full tests (read-only + write operations)")
-
-        choice = input("\nSelect test mode (1, 2, or 3): ").strip()
-
         if choice == '2':
             run_write_tests()
         elif choice == '3':
