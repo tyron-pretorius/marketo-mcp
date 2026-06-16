@@ -2243,9 +2243,12 @@ def run_full_mode(dry_run=False, suffix=None, group=None, mode="full"):
 
 
 def _prompt_full_options(allow_group=True):
-    """Interactively collect the full-suite options (all optional)."""
-    dry = input("Dry run — print the planned steps without calling Marketo? (y/N): "
-                ).strip().lower() in ("y", "yes")
+    """Interactively collect the full-suite options (all optional).
+
+    The interactive menu always makes real Marketo calls — dry-run is a
+    developer-only convenience available solely via the `--dry-run` CLI flag.
+    """
+    dry = False
     sfx = input("Run suffix (Enter for an auto timestamp): ").strip() or None
     if not allow_group:
         return dry, sfx, None
