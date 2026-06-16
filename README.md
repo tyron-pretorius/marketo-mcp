@@ -122,6 +122,22 @@ error code). A clean run is `0 FAIL`, and the full run also asserts
 > calling Marketo** — a developer convenience only; it is never reached from
 > the menu (every menu option runs for real).
 
+**Reducing SKIPs.** A typical sandbox run skips ~70 steps. Most are removable
+by changing the instance/role rather than the code:
+
+| SKIP reason | How to make it PASS |
+|---|---|
+| `permission(603)` on field-schema tools (lead / program-member / company / opportunity / named-account fields) | Grant the API user's role the **Read-Write Schema Standard/Custom Field** permissions (Admin → Users & Roles) |
+| User Management tools (`list_users`, `invite_user`, …) + the safety-gated user mutations | Grant the role the **Access User Management** permission |
+| Asset v2 / Emails 2.0 (23 tools) | Enable the **Emails 2.0** experience on the instance and grant the role Asset-v2 access. *(The requests already send the required `x-app-type` header — without Emails 2.0 enabled they return `603`.)* |
+| Redirect-rule tools (`no LP domains configured`) | Configure a **landing-page domain (CNAME)** on the instance |
+| `campaign-not-activatable`, `email has no modules`, `no dynamic content`, `freeForm LP has no variables`, pre-existing form fields, `not-an-email-program` | **Inherent** — the operation legitimately doesn't apply to the minimal test fixtures. Forcing them would mean building elaborate trigger campaigns / modular emails / segmentations for little added confidence, so the suite skips them by design. |
+
+Reordering steps does **not** help — these are permission/feature/state
+conditions, not ordering problems. The two big levers are entirely in your
+hands: grant the API role the schema + user-management permissions, and (if you
+use it) enable Emails 2.0.
+
 #### 1. Read-only tests
 A mutation-free discovery pass: it browses each asset type (folders, lists,
 programs, smart campaigns/lists, snippets, forms, landing pages + templates,
@@ -155,6 +171,25 @@ duplicate names) or with a previous run that crashed before cleanup, and lets
 cleanup target exactly this run's assets. **Hit Enter** to use an
 auto-generated timestamp; the suffix only affects asset names, never what's
 tested.
+
+*Why it runs ~330 steps* — far more than the number of write tools. Three
+things multiply the count:
+1. **Dependencies.** Most write tools can't run in isolation — they need a
+   parent asset to act on. Testing `custom_update_email` first needs an email,
+   which needs a template, which needs a folder; testing
+   `custom_delete_program_members` needs a program with a member, which needs a
+   lead and the instance's required tags. So each write is preceded by the
+   `create_*` (often native) calls that build its target.
+2. **Full lifecycle per asset.** An asset is created → read back → updated →
+   (un)approved/cloned → finally deleted, so one asset touches many tools.
+   Creates appear near the top, the matching deletes are batched in a teardown
+   phase at the end (that's the run of `custom_delete_*` you see last).
+3. **Full coverage.** Write-only exercises **every** write-capable custom tool
+   plus the native infrastructure tools needed to set up their targets — that's
+   what makes the full run assert `0 UNCOVERED`.
+
+So the step count is "every write tool × (its prerequisites + its teardown)",
+not redundancy — nothing is tested twice.
 
 #### 3. Full tests
 Read-only pass **+** write lifecycle, and the only mode that asserts full

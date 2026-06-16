@@ -1629,7 +1629,8 @@ def build_full_steps(sfx):
                       ("non-json", "v2-unavailable")],
              after=_flag_skip("no_v2")))
     v2_gate = _group_gate(
-        "no_v2", "Asset v2 unavailable (704 x-app-type header / Emails 2.0 not enabled)")
+        "no_v2", "Asset v2 unavailable (needs Emails 2.0 enabled + Asset v2 "
+                 "permission on the API role)")
     for tool, args in [
         ("custom_get_email2_by_id", lambda c: {"email_id": c["email_id"]}),
         ("custom_create_email2",

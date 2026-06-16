@@ -3019,7 +3019,9 @@ def deleteFolder(token, folderId, folderType="Folder"):
 def getEmail2ById(token, emailId):
     """Get an Emails 2.0 email by ID (Asset v2; requires Emails 2.0 enabled)."""
     url = _base() + f'/rest/asset/v2/email/{emailId}'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3029,7 +3031,9 @@ def createEmail2(token, name, appData, emailHeaders, description=None,
                  status=None, editorContext=None):
     """Create an Emails 2.0 email (Asset v2). emailHeaders carries subject/fromName/fromEmail/replyTo."""
     url = _base() + '/rest/asset/v2/email'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'appData': appData,
@@ -3052,7 +3056,9 @@ def updateEmail2(token, emailId, name=None, description=None, data=None,
                  themeId=None, status=None):
     """Update an Emails 2.0 email (Asset v2): name, description, data, headers, settings, etc."""
     url = _base() + f'/rest/asset/v2/email/{emailId}/update'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'description': description,
@@ -3071,7 +3077,9 @@ def updateEmail2(token, emailId, name=None, description=None, data=None,
 def deleteEmail2(token, emailId):
     """Delete an Emails 2.0 email (Asset v2)."""
     url = _base() + f'/rest/asset/v2/email/{emailId}/delete'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3079,7 +3087,9 @@ def deleteEmail2(token, emailId):
 def cloneEmail2(token, emailId, name, folderId, extra=None):
     """Clone an Emails 2.0 email (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/email/clone'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3091,7 +3101,9 @@ def cloneEmail2(token, emailId, name, folderId, extra=None):
 def transitionEmail2State(token, emailId, action):
     """Transition an Emails 2.0 email's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/email/state/transition'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'contentId': emailId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3100,7 +3112,9 @@ def transitionEmail2State(token, emailId, action):
 def getEmail2UsedBy(token, emailId, pageIndex=None, pageSize=None, assetType=None):
     """List assets that use an Emails 2.0 email (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/email/usedby'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'assetId': emailId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
@@ -3117,7 +3131,9 @@ def browseEmailTemplates2(token, workspaceId, folderId=None, status=None,
                           sortKey=None, sortOrder=None, includeArchived=None):
     """Browse Emails 2.0 email templates (Asset v2) in a workspace."""
     url = _base() + '/rest/asset/v2/emailtemplate/filter'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     params = {
         'workspaceId': workspaceId,
         'folderId': folderId,
@@ -3137,7 +3153,9 @@ def browseEmailTemplates2(token, workspaceId, folderId=None, status=None,
 def getEmailTemplate2ById(token, templateId):
     """Get an Emails 2.0 email template by ID (Asset v2)."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3146,7 +3164,9 @@ def createEmailTemplate2(token, name, appData, description=None, data=None,
                          themeId=None, status=None, editorContext=None):
     """Create an Emails 2.0 email template (Asset v2). appData carries folder placement etc."""
     url = _base() + '/rest/asset/v2/emailtemplate'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'appData': appData,
@@ -3165,7 +3185,9 @@ def updateEmailTemplate2(token, templateId, name=None, description=None,
                          data=None, themeId=None, status=None):
     """Update an Emails 2.0 email template (Asset v2): name, description, data, themeId, status."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}/update'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'description': description,
@@ -3181,7 +3203,9 @@ def updateEmailTemplate2(token, templateId, name=None, description=None,
 def deleteEmailTemplate2(token, templateId):
     """Delete an Emails 2.0 email template (Asset v2)."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}/delete'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3189,7 +3213,9 @@ def deleteEmailTemplate2(token, templateId):
 def cloneEmailTemplate2(token, templateId, name, folderId, extra=None):
     """Clone an Emails 2.0 email template (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/emailtemplate/clone'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3201,7 +3227,9 @@ def cloneEmailTemplate2(token, templateId, name, folderId, extra=None):
 def transitionEmailTemplate2State(token, templateId, action):
     """Transition an Emails 2.0 email template's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/emailtemplate/state/transition'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'contentId': templateId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3211,7 +3239,9 @@ def getEmailTemplate2UsedBy(token, templateId, pageIndex=None, pageSize=None,
                             assetType=None):
     """List assets that use an Emails 2.0 email template (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/emailtemplate/usedby'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'assetId': templateId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
@@ -3228,7 +3258,9 @@ def browseFragments(token, workspaceId, folderId=None, status=None, name=None,
                     sortKey=None, sortOrder=None, includeArchived=None):
     """Browse Emails 2.0 fragments (Asset v2) in a workspace."""
     url = _base() + '/rest/asset/v2/fragment/filter'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     params = {
         'workspaceId': workspaceId,
         'folderId': folderId,
@@ -3249,7 +3281,9 @@ def browseFragments(token, workspaceId, folderId=None, status=None, name=None,
 def getFragmentById(token, fragmentId):
     """Get an Emails 2.0 fragment by ID (Asset v2)."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3258,7 +3292,9 @@ def createFragment(token, name, appData, settings, description=None, data=None,
                    themeId=None, status=None):
     """Create an Emails 2.0 fragment (Asset v2). appData carries folder placement; settings is required."""
     url = _base() + '/rest/asset/v2/fragment'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'appData': appData,
@@ -3277,7 +3313,9 @@ def updateFragment(token, fragmentId, name=None, description=None, data=None,
                    settings=None, status=None):
     """Update an Emails 2.0 fragment (Asset v2): name, description, data, settings, status."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}/update'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {
         'name': name,
         'description': description,
@@ -3293,7 +3331,9 @@ def updateFragment(token, fragmentId, name=None, description=None, data=None,
 def deleteFragment(token, fragmentId):
     """Delete an Emails 2.0 fragment (Asset v2)."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}/delete'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3301,7 +3341,9 @@ def deleteFragment(token, fragmentId):
 def cloneFragment(token, fragmentId, name, folderId, extra=None):
     """Clone an Emails 2.0 fragment (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/fragment/clone'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3313,7 +3355,9 @@ def cloneFragment(token, fragmentId, name, folderId, extra=None):
 def transitionFragmentState(token, fragmentId, action):
     """Transition an Emails 2.0 fragment's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/fragment/state/transition'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'contentId': fragmentId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3323,7 +3367,9 @@ def getFragmentUsedBy(token, fragmentId, pageIndex=None, pageSize=None,
                       assetType=None):
     """List assets that use an Emails 2.0 fragment (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/fragment/usedby'
-    headers = {'Authorization': 'Bearer ' + token}
+    # Asset v2 (Emails 2.0) requires an x-app-type header; the API only checks
+    # presence (any value passes the gate), then enforces the role's permissions.
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
     body = {'assetId': fragmentId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
