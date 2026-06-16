@@ -2250,8 +2250,8 @@ def _prompt_full_options(allow_group=True):
     """
     dry = False
     sfx = input("Enter a suffix to append to test asset names so you can clearly "
-                "identify those created by this run (Enter for an auto timestamp): "
-                ).strip() or None
+                "identify those created by this run (hit Enter to use an "
+                "auto generated timestamp as the suffix): ").strip() or None
     if not allow_group:
         return dry, sfx, None
     print("\nAvailable groups (Enter to run everything and assert full coverage):")
