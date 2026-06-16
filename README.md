@@ -83,32 +83,119 @@ Every Marketo REST operation the native MCP lacks, as `custom_*` tools grouped b
 
 ### Test
 
-```bash
-# Self-contained check (no real credentials): starts a stub upstream and the
-# blended server, verifies tool merging, header forwarding, and error paths.
-python test_blended_server.py stub
+`test_blended_server.py` exercises the blended server end-to-end against a
+real Marketo sandbox. Run it with no arguments and pick a mode from the menu:
 
-# One custom + one native call against your instance (server must be running):
-python test_blended_server.py live
+```
+$ python test_blended_server.py
 
-# Full end-to-end suite: starts the server itself and exercises EVERY custom_*
-# tool plus a native smoke set against a real sandbox. Credentials come from
-# the environment or a .env.sandbox file (MARKETO_CLIENT_ID/SECRET/MUNCHKIN_ID).
-# All assets it creates are MCPTEST_FULL_* and are cleaned up.
-python test_blended_server.py full
-python test_blended_server.py full --dry-run            # plan only, no API calls
-python test_blended_server.py full --group bulk-export  # just the bulk-export tools
-python test_blended_server.py full --group bulk-import  # just the bulk-import tools
+Select what to run:
+    1. Read-only tests (safe, no modifications)
+    2. Write-only tests (create, clone, update, delete — temporary test assets, auto-cleaned)
+    3. Full tests (read-only + write operations)
+    4. Bulk-export tests (tiny jobs)
+    5. Bulk-import tests (tiny jobs)
+    6. Live mode (quick single smoke call against a running server)
 ```
 
-The bulk-export tests deliberately create tiny jobs (a few-minute activity
-window over the suite's own leads; exports scoped to the suite's program /
-records) and bulk-import tests use 2–3 row CSVs, so they run in seconds.
+Credentials come from the environment or a `.env.sandbox` file
+(`MARKETO_CLIENT_ID` / `MARKETO_CLIENT_SECRET` / `MARKETO_MUNCHKIN_ID`); modes
+1–5 self-start the blended server. Every menu option makes **real** Marketo
+calls. The same modes are available non-interactively as CLI subcommands
+(`readonly`, `write`, `full`, `live`) plus `full --group bulk-export|bulk-import`.
 
-Tools for un-provisioned features SKIP with a reason rather than fail — e.g.
-Asset v2 / Emails 2.0 (if not enabled on the instance), ABM named accounts,
-user management (needs the "Access User Management" API permission), and
-field-schema endpoints (need the schema permission on the API role).
+**How steps are ordered (applies to every mode).** The suite is a dependency
+DAG, not a flat list: a thing is always *discovered or created* before it is
+*used*. Browse calls run first and stash the first result's id/name; later
+get-by-id / get-by-name / content / update / delete steps read those stashed
+values. Any step whose prerequisite wasn't found is **SKIP**ped (not failed),
+so the run degrades gracefully on instances missing a feature or some data.
+
+**SKIP vs FAIL.** A SKIP means an expected, environment-driven non-result:
+a missing prerequisite, a permission the API role lacks, a feature not
+provisioned (Asset v2 / Emails 2.0, ABM named accounts, User Management), or a
+documented state error. A FAIL is a real problem (exception or unexpected
+error code). A clean run is `0 FAIL`, and the full run also asserts
+`0 UNCOVERED` (every one of the 256 custom tools was exercised).
+
+> `full --dry-run` prints the planned steps and the coverage check **without
+> calling Marketo** — a developer convenience only; it is never reached from
+> the menu (every menu option runs for real).
+
+#### 1. Read-only tests
+A mutation-free discovery pass: it browses each asset type (folders, lists,
+programs, smart campaigns/lists, snippets, forms, landing pages + templates,
+email templates, emails, files, segmentations, custom objects, CRM objects)
+and reads the first result with the matching get/by-name/content tools, plus
+the stats and describe tools. A guard *refuses to execute any write step*, so
+it is safe to point at any instance.
+
+*Why `get_list_members` is called several times:* the lead-centric read tools
+(`custom_get_lead_by_id`, `get_lead_changes`, membership tools, …) need a real
+lead id, and the only way to get one **without creating anything** is to read
+an existing populated static list. Lists are often empty, so the pass walks
+the first several lists calling `get_list_members` and **stops the moment one
+returns members** (remaining probes SKIP with *"lead already found"*). If no
+list has members it falls back to pulling a lead from a program. That's why
+you'll see a handful of `get_list_members` calls, some PASS (empty or worked
+lists) and some SKIP (after a lead was found).
+
+*Expected SKIPs:* `custom_get_lead_fields` / `custom_get_lead_field_by_name`
+(need the schema permission on the API role) and `custom_list_workspaces`
+(needs the "Access User Management" permission). Grant the role those
+permissions in Marketo **Admin → Users & Roles** to turn them into PASS.
+
+#### 2. Write-only tests
+The create / update / clone / delete lifecycle. It builds a small set of
+throwaway assets, exercises the write tools against them, and **deletes
+everything at the end**. You're first prompted for a run *suffix* appended to
+the asset names (e.g. `MCPTEST_FULL_LP_CLONE_<suffix>`) so the run's assets
+are uniquely named — this avoids name collisions with Marketo (which rejects
+duplicate names) or with a previous run that crashed before cleanup, and lets
+cleanup target exactly this run's assets. **Hit Enter** to use an
+auto-generated timestamp; the suffix only affects asset names, never what's
+tested.
+
+#### 3. Full tests
+Read-only pass **+** write lifecycle, and the only mode that asserts full
+coverage (256 custom tools, `0 UNCOVERED`). Note: **write tools run exactly
+once** (only in the lifecycle), but a subset of **read tools run twice** — once
+in the read-only pass against pre-existing assets and once in the lifecycle
+against the freshly-created ones. That read duplication is intentional (two
+data shapes) and cheap; no write is ever repeated.
+
+#### 4. Bulk-export tests
+Runs the bulk-export tools **plus their minimal prerequisites**. A bulk export
+is only meaningful with data to extract, so the group first *seeds a tiny,
+known dataset and discovers the metadata* needed to form valid requests,
+**then** runs the exports, **then** cleans up. The pre-export steps are:
+
+- `browse_folders` → `create_folder` — a container for the test assets
+- `custom_sync_leads` — the leads the lead/activity/program-member exports extract
+- `browse_tag_types` → `get_tag_type_by_name` — discover a required program tag (this instance requires tags)
+- `create_program` + `custom_change_lead_program_status` — a program with a member, so the PM export has rows
+- `sync_custom_object_type` → `add_fields` → `approve` → `sync_custom_objects` — a custom object with records to export
+- `get_activity_types` — to scope the activity export to specific type ids
+- `get_program_member_fields` — to pick valid fields for the PM export
+
+Each export then runs `create → enqueue → poll status → fetch file`, plus a
+second job to exercise `cancel`, plus `list`. The ~12s steps are the status
+polling. **Jobs are deliberately tiny** — exports use a few-minute time window
+over the run's own records, and the activity export is additionally scoped by
+`activity_type_ids` so it can never pull a large file regardless of instance
+traffic (keeping well clear of Marketo's 500 MB/day extract quota). Seeding a
+known dataset (rather than exporting whatever already exists) is what makes the
+test both small and deterministic.
+
+#### 5. Bulk-import tests
+The bulk import lifecycle (leads, custom objects, program members) using
+**2–3 row CSVs** so each job is a few KB and finishes in seconds, with the same
+seed-then-import-then-cleanup shape and status/failures/warnings checks.
+
+#### 6. Live mode
+A quick single smoke call against an **already-running** blended server (it
+does not self-start one) — lists the tools and calls one custom tool. Use it to
+confirm a deployment is reachable and authenticating, not for coverage.
 
 ### Blended server files
 
@@ -119,7 +206,7 @@ marketo_functions.py    # THE API library — all 325 REST functions (shared by 
 custom_tools.py         # custom_* tool wrappers (+ marketo_rest/ domain modules)
 marketo_rest/bridge.py  # creds resolution + token retry between tools and the library
 legacy_api.py           # env-credential provider for the legacy servers
-test_blended_server.py  # tests (stub / live / full modes)
+test_blended_server.py  # tests (read-only / write / full / bulk / live modes)
 ```
 
 ---
@@ -366,7 +453,7 @@ MarketoMCP/
 ├── marketo_rest/                # Domain tool modules + bridge.py (creds/token plumbing)
 ├── credentials.py               # Blended-server header creds + OAuth token cache
 ├── legacy_api.py                # Legacy-server env-credential provider
-├── test_blended_server.py       # Blended tests (stub / live / full / --group)
+├── test_blended_server.py       # Blended tests (read-only / write / full / bulk / live)
 ├── test_mcp_server.py           # Legacy MCP protocol test suite (--auto / --group)
 ├── test_marketo_functions.py    # Direct function test suite (--auto / --group)
 ├── requirements.txt             # Python dependencies (fastmcp>=3,<4)
