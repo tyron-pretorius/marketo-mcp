@@ -2926,7 +2926,7 @@ if __name__ == '__main__':
     print("    2. Write-only tests (create, clone, update, delete)")
     print("    3. Full tests (read-only + write operations)")
     print("\n  Automated full-coverage suite (creates and then deletes")
-    print("  MCPTEST_LEG_* assets):")
+    print("  temporary test assets):")
     print("    4. Auto - every function (full coverage)")
     print("    5. Auto - bulk-export steps only")
     print("    6. Auto - bulk-import steps only")

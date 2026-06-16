@@ -2946,7 +2946,7 @@ async def main():
     print("    2. Write-only tests (create, clone, update, delete)")
     print("    3. Full tests (read-only + write operations)")
     print("\n  Automated full-coverage suite (self-starts a server on :8010,")
-    print("  creates and then deletes MCPTEST_LEG_* assets):")
+    print("  creates and then deletes temporary test assets):")
     print("    4. Auto - every tool (full coverage)")
     print("    5. Auto - bulk-export steps only")
     print("    6. Auto - bulk-import steps only")

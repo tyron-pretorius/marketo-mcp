@@ -2325,7 +2325,7 @@ def _run_menu():
     print("\nSelect what to run:")
     print("    1. Read-only tests (safe, no modifications)")
     print("    2. Write-only tests (create, clone, update, delete — "
-          "MCPTEST_FULL_* assets, auto-cleaned)")
+          "temporary test assets, auto-cleaned)")
     print("    3. Full tests (read-only + write operations)")
     print("    4. Bulk-export tests (tiny jobs)")
     print("    5. Bulk-import tests (tiny jobs)")
