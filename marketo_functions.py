@@ -1031,6 +1031,17 @@ def updateLeadField(token, fieldApiName, updates):
 # Static Lists (extended)
 # ============================================================================
 
+def addLeadsToList(token, listId, leadIds):
+    """Add leads to a static list by lead ID. Max 300 lead IDs per call."""
+    if len(leadIds) > 300:
+        return {"error": f"Marketo allows at most 300 leads per add call (got {len(leadIds)})."}
+    url = _base() + f'/rest/v1/lists/{listId}/leads.json'
+    headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+    body = {'input': [{'id': i} for i in leadIds]}
+    response = requests.post(url, headers=headers, json=body, timeout=30)
+    return response.json()
+
+
 def removeLeadsFromList(token, listId, leadIds):
     """Remove leads from a static list by lead ID. Max 300 lead IDs per call."""
     if len(leadIds) > 300:
