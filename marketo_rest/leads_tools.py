@@ -193,6 +193,15 @@ def register(mcp: FastMCP, creds_provider=None):
     # ========================================================================
 
     @mcp.tool()
+    def custom_add_leads_to_list(list_id: int, lead_ids: list) -> dict:
+        """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        Add leads to a static list by lead id, without changing any of their
+        field values. Max 300 lead ids per call. Use this to put people who are
+        already in the database onto a list; to create or update people and add
+        them to a list in one job, use custom_import_leads_csv with list_id."""
+        return _call(mf.addLeadsToList, list_id, lead_ids)
+
+    @mcp.tool()
     def custom_remove_leads_from_list(list_id: int, lead_ids: list) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         Remove leads from a static list by lead id. Max 300 lead ids per
