@@ -31,8 +31,8 @@ def register(mcp: FastMCP, creds_provider=None):
         the requested `fields` (API names). Use this instead of the native
         get_leads_by_filter when you need specific fields — the native tool
         ignores its field argument and returns a fixed default set. Up to 300
-        id values or 30 email values per call; omit fields for Marketo's
-        default set."""
+        values per call for either filter type, emails included; omit fields
+        for Marketo's default set."""
         return _call(mf.getLeadsByFilter, filter_type, filter_values, fields,
                      batch_size, next_page_token)
 

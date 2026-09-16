@@ -174,6 +174,10 @@ def getLeadsByFilter(token, filterType, filterValues, fields=None, batchSize=Non
                      nextPageToken=None):
     """Get leads by filter (email or id), honoring an explicit field list.
 
+    Takes up to 300 values per call for either filter type — the query is sent
+    in a POST body, so the 8KB URL limit that holds the GET form to ~30 email
+    addresses does not apply.
+
     Unlike the native MCP's get_leads_by_filter (which ignores its field
     argument and returns a fixed default set), this passes the requested
     fields straight to the REST `fields` parameter, so only those fields are
@@ -185,15 +189,22 @@ def getLeadsByFilter(token, filterType, filterValues, fields=None, batchSize=Non
     if isinstance(filterValues, list):
         filterValues = ','.join(map(str, filterValues))
 
-    params = {'filterType': filterType, 'filterValues': filterValues}
+    data = {'filterType': filterType, 'filterValues': filterValues}
     if fields:
-        params['fields'] = ','.join(fields) if isinstance(fields, list) else fields
+        data['fields'] = ','.join(fields) if isinstance(fields, list) else fields
     if batchSize:
-        params['batchSize'] = batchSize
+        data['batchSize'] = batchSize
     if nextPageToken:
-        params['nextPageToken'] = nextPageToken
+        data['nextPageToken'] = nextPageToken
 
-    response = requests.get(url, headers=headers, params=params, timeout=30)
+    # Sent as POST with _method=GET so the query travels in the body. Marketo caps a
+    # GET at 8KB and 300 email addresses is ~13KB, which is why the GET form is held
+    # to ~30 emails per call. Marketo processes both identically — same result set,
+    # same request accounting — so this path is taken every time rather than only on
+    # long queries, which would leave the rarely-used branch untested.
+    # (An oversized GET answers 431 on a live instance, though the docs say 414.)
+    response = requests.post(url, headers=headers, params={'_method': 'GET'},
+                             data=data, timeout=30)
     return response.json()
 
 
