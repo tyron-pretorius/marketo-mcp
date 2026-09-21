@@ -1908,21 +1908,21 @@ def build_full_steps(sfx, R, group=None):
         add(step('custom_discard_form_draft', lambda c: {'form_id': c['form_id']}))
 
         # ============================================================ G. email templates + emails
-        add(step('custom_create_email_template',
+        add(step('custom_create_email_template_legacy',
                  lambda c: {'name': name('TPL'), 'folder_id': c['ds_etpl'],
                             'html_content': EMAIL_TEMPLATE_HTML,
                             'description': 'MCPTEST_LEG suite template'},
                  save=_save_first_id('tpl_id')))
-        add(step('custom_browse_email_templates', {'max_return': 5}))
-        add(step('custom_get_email_template_by_id', lambda c: {'template_id': c['tpl_id']}))
-        add(step('custom_get_email_template_by_name', lambda c: {'name': name('TPL')}))
-        add(step('custom_get_email_template_content', lambda c: {'template_id': c['tpl_id']}))
-        add(step('custom_update_email_template',
+        add(step('custom_browse_email_templates_legacy', {'max_return': 5}))
+        add(step('custom_get_email_template_by_id_legacy', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_get_email_template_by_name_legacy', lambda c: {'name': name('TPL')}))
+        add(step('custom_get_email_template_content_legacy', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_update_email_template_legacy',
                  lambda c: {'template_id': c['tpl_id'],
                             'description': f'MCPTEST_LEG updated {sfx}'}))
-        add(step('custom_approve_email_template', lambda c: {'template_id': c['tpl_id']}))
-        add(step('custom_get_email_template_used_by', lambda c: {'template_id': c['tpl_id']}))
-        add(step('custom_clone_email_template',
+        add(step('custom_approve_email_template_legacy', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_get_email_template_used_by_legacy', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_clone_email_template_legacy',
                  lambda c: {'template_id': c['tpl_id'], 'name': name('TPL_CLONE'),
                             'folder_id': c['ds_etpl']},
                  save=_save_first_id('tpl_clone_id')))
@@ -1934,17 +1934,17 @@ def build_full_steps(sfx, R, group=None):
         add(step('get_email_by_id', lambda c: {'email_id': c['email_id']}))
         add(step('get_email_by_name', lambda c: {'name': name('EMAIL')}))
         add(step('browse_emails', {'max_return': 5}))
-        add(step('custom_update_email',
+        add(step('custom_update_email_legacy',
                  lambda c: {'email_id': c['email_id'], 'description': f'MCPTEST {sfx}'}))
-        add(step('custom_update_email_headers',
+        add(step('custom_update_email_headers_legacy',
                  lambda c: {'email_id': c['email_id'], 'subject': f'MCPTEST subject {sfx}',
                             'reply_to': SAMPLE_EMAIL_TO}))
-        add(step('custom_get_email_variables', lambda c: {'email_id': c['email_id']},
+        add(step('custom_get_email_variables_legacy', lambda c: {'email_id': c['email_id']},
                  save=lambda c, d: c.__setitem__('email_vars',
                                                  [v.get('name') or v.get('id')
                                                   for v in d.get('result') or []]),
                  skip_errors='no-email-variables'))
-        add(step('custom_update_email_variable',
+        add(step('custom_update_email_variable_legacy',
                  lambda c: {'email_id': c['email_id'], 'variable_name': c['email_vars'][0],
                             'value': 'world'},
                  skip_if=lambda c: None if c.get('email_vars') else 'no variables on email'))
@@ -1958,24 +1958,24 @@ def build_full_steps(sfx, R, group=None):
 
         add(step('get_email_content', lambda c: {'email_id': c['email_id']},
                  save=save_email_sections))
-        add(step('custom_add_email_module',
+        add(step('custom_add_email_module_legacy',
                  lambda c: {'email_id': c['email_id'], 'module_id': c['email_modules'][0],
                             'name': 'MCPTEST Module Copy', 'index': 1},
                  skip_if=lambda c: None if c.get('email_modules') else 'email has no modules',
                  skip_on=[('611', 'no-modular-editor')],
                  save=lambda c, d: c.__setitem__('added_module',
                                                  (d.get('result') or [{}])[0].get('id'))))
-        add(step('custom_rename_email_module',
+        add(step('custom_rename_email_module_legacy',
                  lambda c: {'email_id': c['email_id'], 'module_id': c['added_module'],
                             'name': 'MCPTEST Module Renamed'},
                  skip_if=lambda c: None if c.get('added_module') else 'no module was added'))
-        add(step('custom_duplicate_email_module',
+        add(step('custom_duplicate_email_module_legacy',
                  lambda c: {'email_id': c['email_id'], 'module_id': c['email_modules'][0],
                             'name': 'MCPTEST Module Dupe'},
                  skip_if=lambda c: None if c.get('email_modules') else 'email has no modules',
                  save=lambda c, d: c.__setitem__('dupe_module',
                                                  (d.get('result') or [{}])[0].get('id'))))
-        add(step('custom_rearrange_email_modules',
+        add(step('custom_rearrange_email_modules_legacy',
                  lambda c: {'email_id': c['email_id'],
                             'positions': [{'index': i, 'moduleId': m} for i, m in enumerate(
                                 reversed([m for m in [c['email_modules'][0],
@@ -1984,7 +1984,7 @@ def build_full_steps(sfx, R, group=None):
                                           + c['email_modules'][1:] if m]))]},
                  skip_if=lambda c: None if c.get('email_modules') else 'email has no modules',
                  skip_errors='rearrange-rejected'))
-        add(step('custom_delete_email_module',
+        add(step('custom_delete_email_module_legacy',
                  lambda c: {'email_id': c['email_id'], 'module_id': c['dupe_module']},
                  skip_if=lambda c: None if c.get('dupe_module') else 'no duplicated module'))
 
@@ -2017,11 +2017,11 @@ def build_full_steps(sfx, R, group=None):
 
         add(step('get_email_content', lambda c: {'email_id': c['email_id'], 'status': 'draft'},
                  name='get_email_content(draft)', save=save_email_dc))
-        add(step('custom_get_email_dynamic_content',
+        add(step('custom_get_email_dynamic_content_legacy',
                  lambda c: {'email_id': c['email_id'],
                             'dynamic_content_id': str(c['email_dc_id'])},
                  skip_if=lambda c: None if c.get('email_dc_id') else 'no dynamic content section'))
-        add(step('custom_update_email_dynamic_content',
+        add(step('custom_update_email_dynamic_content_legacy',
                  lambda c: {'email_id': c['email_id'],
                             'dynamic_content_id': str(c['email_dc_id']),
                             'segment': [s for s in c.get('segments', []) if s != 'Default'][0],
@@ -2029,33 +2029,33 @@ def build_full_steps(sfx, R, group=None):
                  skip_if=lambda c: (None if (c.get('email_dc_id') and
                                              [s for s in c.get('segments', []) if s != 'Default'])
                                     else 'no dynamic content section / segments')))
-        add(step('custom_update_email_full_content',
+        add(step('custom_update_email_full_content_legacy',
                  lambda c: {'email_id': c['email_id'],
                             'html_content': '<html><body><p>MCPTEST full content</p></body></html>'},
                  skip_errors='not-supported-for-modular-email'))
-        add(step('custom_send_sample_email',
+        add(step('custom_send_sample_email_legacy',
                  lambda c: {'email_id': c['email_id'], 'email_address': SAMPLE_EMAIL_TO}))
         add(step('preview_email', lambda c: {'email_id': c['email_id']}))
-        add(step('custom_preview_email', lambda c: {'email_id': c['email_id']}))
+        add(step('custom_preview_email_legacy', lambda c: {'email_id': c['email_id']}))
         add(step('get_email_cc_fields'))
         add(step('custom_get_email_cc_fields'))
         add(step('infra:approve_email', lambda c: {'email_id': c['email_id']},
                  infra=R.approve_email))
-        add(step('custom_update_email_headers',
+        add(step('custom_update_email_headers_legacy',
                  lambda c: {'email_id': c['email_id'],
                             'subject': f'MCPTEST draft subject {sfx}'},
-                 name='custom_update_email_headers(draft)'))
-        add(step('custom_discard_email_draft', lambda c: {'email_id': c['email_id']}))
-        add(step('custom_clone_email',
+                 name='custom_update_email_headers_legacy(draft)'))
+        add(step('custom_discard_email_draft_legacy', lambda c: {'email_id': c['email_id']}))
+        add(step('custom_clone_email_legacy',
                  lambda c: {'email_id': c['email_id'], 'name': name('EMAIL_CLONE'),
                             'folder_id': c['ds_emails']},
                  save=_save_first_id('email_clone_id')))
-        add(step('custom_unapprove_email', lambda c: {'email_id': c['email_id']}))
-        add(step('custom_update_email_template_content',
+        add(step('custom_unapprove_email_legacy', lambda c: {'email_id': c['email_id']}))
+        add(step('custom_update_email_template_content_legacy',
                  lambda c: {'template_id': c['tpl_id'],
                             'html_content': EMAIL_TEMPLATE_HTML.replace(
                                 'Hello from text one.', 'Hello from text one (draft).')}))
-        add(step('custom_discard_email_template_draft', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_discard_email_template_draft_legacy', lambda c: {'template_id': c['tpl_id']}))
 
         # ============================================================ H. files
         file_name = f"MCPTEST_LEG_file_{sfx}.txt"
@@ -2665,7 +2665,7 @@ def build_full_steps(sfx, R, group=None):
         add(step('custom_delete_user', {'user_id': INVITE_EMAIL}, skip_if=invited_gate,
                  skip_errors='invited-user-not-deletable'))
 
-        add(step('custom_browse_email_templates2',
+        add(step('custom_browse_email_templates',
                  lambda c: {'workspace_id': c.get('workspace_id', 1)},
                  skip_on=[('704', 'v2-unavailable: x-app-type header required'),
                           ('non-json', 'v2-unavailable'),
@@ -2674,32 +2674,32 @@ def build_full_steps(sfx, R, group=None):
         v2_gate = _group_gate(
             'no_v2', 'Asset v2 unavailable (704 x-app-type header / Emails 2.0 not enabled)')
         for tool, args in [
-            ('custom_get_email2_by_id', lambda c: {'email_id': c['email_id']}),
-            ('custom_create_email2',
+            ('custom_get_email_by_id', lambda c: {'email_id': c['email_id']}),
+            ('custom_create_email',
              lambda c: {'name': name('EMAIL2'), 'app_data': {'folderId': c['ds_emails']},
                         'headers': {'subject': 'MCPTEST', 'fromName': 'MCPTEST',
                                     'fromEmail': SAMPLE_EMAIL_TO, 'replyTo': SAMPLE_EMAIL_TO}}),
-            ('custom_update_email2',
+            ('custom_update_email',
              lambda c: {'email_id': c['email2_id'], 'description': 'MCPTEST'}),
-            ('custom_clone_email2',
+            ('custom_clone_email',
              lambda c: {'email_id': c['email2_id'], 'name': name('EMAIL2_CLONE'),
                         'folder_id': c['ds_emails']}),
-            ('custom_transition_email2_state',
+            ('custom_transition_email_state',
              lambda c: {'email_id': c['email2_id'], 'action': 'approve'}),
-            ('custom_get_email2_used_by', lambda c: {'email_id': c['email2_id']}),
-            ('custom_delete_email2', lambda c: {'email_id': c['email2_id']}),
-            ('custom_get_email_template2_by_id', lambda c: {'template_id': c['tpl_id']}),
-            ('custom_create_email_template2',
+            ('custom_get_email_used_by', lambda c: {'email_id': c['email2_id']}),
+            ('custom_delete_email', lambda c: {'email_id': c['email2_id']}),
+            ('custom_get_email_template_by_id', lambda c: {'template_id': c['tpl_id']}),
+            ('custom_create_email_template',
              lambda c: {'name': name('TPL2'), 'app_data': {'folderId': c['ds_etpl']}}),
-            ('custom_update_email_template2',
+            ('custom_update_email_template',
              lambda c: {'template_id': c['tpl2_id'], 'description': 'MCPTEST'}),
-            ('custom_clone_email_template2',
+            ('custom_clone_email_template',
              lambda c: {'template_id': c['tpl2_id'], 'name': name('TPL2_CLONE'),
                         'folder_id': c['ds_etpl']}),
-            ('custom_transition_email_template2_state',
+            ('custom_transition_email_template_state',
              lambda c: {'template_id': c['tpl2_id'], 'action': 'approve'}),
-            ('custom_get_email_template2_used_by', lambda c: {'template_id': c['tpl2_id']}),
-            ('custom_delete_email_template2', lambda c: {'template_id': c['tpl2_id']}),
+            ('custom_get_email_template_used_by', lambda c: {'template_id': c['tpl2_id']}),
+            ('custom_delete_email_template', lambda c: {'template_id': c['tpl2_id']}),
             ('custom_browse_fragments', lambda c: {'workspace_id': c.get('workspace_id', 1)}),
             ('custom_get_fragment_by_id', lambda c: {'fragment_id': c['fragment_id']}),
             ('custom_create_fragment',
@@ -2716,9 +2716,9 @@ def build_full_steps(sfx, R, group=None):
             ('custom_delete_fragment', lambda c: {'fragment_id': c['fragment_id']}),
         ]:
             save = None
-            if tool == 'custom_create_email2':
+            if tool == 'custom_create_email':
                 save = _save_key('email2_id', 'result', 0, 'id')
-            elif tool == 'custom_create_email_template2':
+            elif tool == 'custom_create_email_template':
                 save = _save_key('tpl2_id', 'result', 0, 'id')
             elif tool == 'custom_create_fragment':
                 save = _save_key('fragment_id', 'result', 0, 'id')
@@ -2756,15 +2756,15 @@ def build_full_steps(sfx, R, group=None):
     if full:
         add(step('custom_delete_snippet', lambda c: {'snippet_id': c['snippet_id']}))
         add(step('custom_delete_form', lambda c: {'form_id': c['form_id']}))
-        add(step('custom_unapprove_email', lambda c: {'email_id': c['email_clone_id']},
-                 name='custom_unapprove_email(clone)', skip_errors='clone-not-approved'))
-        add(step('custom_delete_email', lambda c: {'email_id': c['email_clone_id']},
-                 name='custom_delete_email(clone)'))
-        add(step('custom_delete_email', lambda c: {'email_id': c['email_id']}))
-        add(step('custom_unapprove_email_template', lambda c: {'template_id': c['tpl_id']}))
-        add(step('custom_delete_email_template', lambda c: {'template_id': c['tpl_clone_id']},
-                 name='custom_delete_email_template(clone)'))
-        add(step('custom_delete_email_template', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_unapprove_email_legacy', lambda c: {'email_id': c['email_clone_id']},
+                 name='custom_unapprove_email_legacy(clone)', skip_errors='clone-not-approved'))
+        add(step('custom_delete_email_legacy', lambda c: {'email_id': c['email_clone_id']},
+                 name='custom_delete_email_legacy(clone)'))
+        add(step('custom_delete_email_legacy', lambda c: {'email_id': c['email_id']}))
+        add(step('custom_unapprove_email_template_legacy', lambda c: {'template_id': c['tpl_id']}))
+        add(step('custom_delete_email_template_legacy', lambda c: {'template_id': c['tpl_clone_id']},
+                 name='custom_delete_email_template_legacy(clone)'))
+        add(step('custom_delete_email_template_legacy', lambda c: {'template_id': c['tpl_id']}))
         add(step('custom_unapprove_landing_page', lambda c: {'landing_page_id': c['lp_id']},
                  name='custom_unapprove_landing_page(cleanup)',
                  skip_errors='lp-not-approved',

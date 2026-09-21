@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes Adobe Marketo REST API operations as tools. Built with [FastMCP](https://github.com/jlowin/fastmcp), it allows AI assistants and MCP clients to interact with your Marketo instance.
 
-This repo contains two generations of server, all backed by a **single API library** — [marketo_functions.py](marketo_functions.py), 325 functions covering the complete Marketo REST API surface (leads, schema/custom fields, companies, opportunities + roles, sales persons, custom objects + types, named accounts, program members, smart campaigns/lists, snippets, segmentation, emails + templates + files, landing pages + templates, redirect rules, forms, folders, tokens, bulk import/export for leads/activities/program members/custom objects, usage stats, Asset v2 "Emails 2.0", and user management). Every MCP tool in every server is a thin FastMCP wrapper over the corresponding function. Intentionally excluded: the Data Ingestion API (separate host, paid add-on SKU) and the deprecated `/rest/v1/campaigns.json` endpoints.
+This repo contains two generations of server, all backed by a **single API library** — [marketo_functions.py](marketo_functions.py), 325 functions covering the complete Marketo REST API surface (leads, schema/custom fields, companies, opportunities + roles, sales persons, custom objects + types, named accounts, program members, smart campaigns/lists, snippets, segmentation, emails + templates + files, landing pages + templates, redirect rules, forms, folders, tokens, bulk import/export for leads/activities/program members/custom objects, usage stats, Asset v2 (the new Email Designer), and user management). Every MCP tool in every server is a thin FastMCP wrapper over the corresponding function. Intentionally excluded: the Data Ingestion API (separate host, paid add-on SKU) and the deprecated `/rest/v1/campaigns.json` endpoints.
 
 - **`mcp_server_blended.py` (recommended if you have native MCP access)** — proxies [Adobe's native Marketo MCP server](https://experienceleague.adobe.com/en/docs/marketo-developer/marketo/mcp-server) for its ~120 tools and adds 255 `custom_*` tools for everything it lacks. See [Blended Server](#blended-server-recommended-if-you-have-native-mcp-access).
 - **`mcp_server.py` / `mcp_server_auth.py`** — standalone servers exposing the full surface (297 tools: 42 original + 255 expanded) with credentials in `.env`, for teams **without** native Marketo MCP access. See [Legacy Servers](#legacy-servers).
@@ -74,12 +74,75 @@ Every Marketo REST operation the native MCP lacks, as `custom_*` tools grouped b
 | CRM objects | companies, opportunities + roles, sales persons, custom objects + full type/schema lifecycle, named accounts + lists (ABM) |
 | Program members | status/data sync, delete, custom PM fields |
 | Bulk | lead import + failures/warnings; activity/program-member/custom-object exports (create/enqueue/status/file/cancel/list); PM/CO imports; lead export list/cancel |
-| Emails & templates | metadata/clone/delete/unapprove/discard, headers, modules, dynamic content, full content, variables, full email template lifecycle, files upload/replace |
+| Emails & templates (Editor 1.0/2.0, Asset v1) | metadata/clone/delete/unapprove/discard, headers, modules, dynamic content, full content, variables, full email template lifecycle, files upload/replace |
 | Landing pages | full LP lifecycle + content sections + dynamic content + variables, LP template lifecycle, redirect rules, domains, segmentation reads |
 | Forms & assets | form delete/discard/field deletes/submit button/thank-you pages, folder delete, smart campaign clone, smart list/snippet deletes |
-| Asset v2 ("Emails 2.0") | email/template/fragment create/get/update/delete/clone/state transition/used-by |
+| Asset v2 (new Email Designer / "Editor 3.0") | email/template/fragment create/get/update/delete/clone/state transition/used-by |
 | User management | users, roles, workspaces, invites |
 | Stats | daily/weekly usage and errors |
+
+### Which email tools for which editor?
+
+Marketo has three generations of email authoring, served by two APIs that do
+**not** overlap. Picking the wrong family is the most common failure here, so
+the naming carries the answer: **`_legacy` = Email Editor 1.0/2.0, unsuffixed =
+new Email Designer.** Every email tool's description also opens with a bracket
+tag naming its editor — including Adobe's native tools, which the blended
+server retags on the way through.
+
+| Emails built in | API | Tools |
+|---|---|---|
+| Email Editor 1.0 / 2.0 — classic, section- and module-based | Asset **v1** | Native `legacy_email_*` (create, get by id/name, get/update content, approve) **+** the `custom_*_email_legacy` / `custom_*_email_template_legacy` tools |
+| New Email Designer — informally "Editor 3.0", internally **"Acrite"**; block-based, built on themes and fragments | Asset **v2** | The **unsuffixed** `custom_*_email` / `custom_*_email_template` tools, plus `custom_*_fragment`. The native MCP has **no** Designer tools |
+
+```
+custom_update_email_legacy    Editor 1.0/2.0     custom_update_email    Designer 3.0
+custom_clone_email_legacy     Editor 1.0/2.0     custom_clone_email     Designer 3.0
+legacy_email_update_content   Editor 1.0/2.0  (native, name kept, description retagged)
+```
+
+Editor 2.0 coverage is complete across the two halves: the native server
+supplies create / approve / content read + write, and the custom tools supply
+update, clone, delete, unapprove, discard draft, headers, the five module
+operations, dynamic content, variables, full-HTML replace, and the whole
+classic email-template domain.
+
+**A note on Adobe's naming.** Adobe calls its classic tools `legacy_email_*`
+but never says legacy *to what*, and "Legacy" reads as deprecated. It is not:
+for a classic email those are the correct tools, and `legacy_email_create` is
+the only way to create one here. `marketo_rest/native_tags.py` prepends an
+editor tag to their descriptions as they pass through the proxy — Adobe's own
+wording is left intact underneath and their names are unchanged, since those
+are Adobe's public interface. Native email tools Adobe adds later arrive
+untagged until they are added to `TAGS`.
+
+**Reading the errors:**
+
+| Error | Meaning |
+|---|---|
+| `709` *Cannot access content for Acrite Email asset* | A `_legacy` (or native `legacy_email_*`) tool was pointed at a new Email Designer email. Drop the `_legacy` suffix. |
+| `603` *Access denied* from an unsuffixed (Designer) tool | A **permissions/provisioning** problem, not a wrong-asset problem: the instance lacks the new Email Designer, or the API role lacks Asset v2 access. It affects every email equally — check by calling `custom_get_email_by_id` on any other email. |
+
+Two Designer limits worth knowing: Asset v2 has no browse-emails endpoint
+(templates and fragments do have one), and its update call takes a whole `data`
+block rather than addressable sections — Designer content is not
+section-editable the way Editor 2.0 content is.
+
+**Reusable content: snippets vs fragments.** The two generations use different
+mechanisms, and all 14 snippet tools plus all 8 fragment tools are tagged
+accordingly.
+
+| | Used by | Tools |
+|---|---|---|
+| **Snippets** | Email Editor 1.0/2.0 emails **and** landing pages | 11 native `*_snippet` + `custom_delete_snippet`, `custom_discard_snippet_draft`, `custom_unapprove_snippet` |
+| **Fragments** | New Email Designer emails only | 8 `custom_*_fragment` |
+
+No snippet tool is email- or landing-page-specific: none of them names a
+consuming asset, and a snippet lives in its own Design Studio folder
+(`folderType: "Snippet"`). So they carry an ASSET-LEVEL tag rather than an
+editor tag — it says the email half of their reach stops at Editor 2.0, and
+points at fragments for the Designer. The fragment tools point back the other
+way.
 
 ### Test
 
@@ -113,7 +176,7 @@ so the run degrades gracefully on instances missing a feature or some data.
 
 **SKIP vs FAIL.** A SKIP means an expected, environment-driven non-result:
 a missing prerequisite, a permission the API role lacks, a feature not
-provisioned (Asset v2 / Emails 2.0, ABM named accounts, User Management), or a
+provisioned (Asset v2 / new Email Designer, ABM named accounts, User Management), or a
 documented state error. A FAIL is a real problem (exception or unexpected
 error code). A clean run is `0 FAIL`, and the full run also asserts
 `0 UNCOVERED` (every one of the 256 custom tools was exercised).
@@ -129,14 +192,14 @@ by changing the instance/role rather than the code:
 |---|---|
 | `permission(603)` on field-schema tools (lead / program-member / company / opportunity / named-account fields) | Grant the API user's role the **Read-Write Schema Standard/Custom Field** permissions (Admin → Users & Roles) |
 | User Management tools (`list_users`, `invite_user`, …) + the safety-gated user mutations | Grant the role the **Access User Management** permission |
-| Asset v2 / Emails 2.0 (23 tools) | Enable the **Emails 2.0** experience on the instance and grant the role Asset-v2 access. *(The requests already send the required `x-app-type` header — without Emails 2.0 enabled they return `603`.)* |
+| Asset v2 / new Email Designer (23 tools) | Enable the **new Email Designer** on the instance and grant the role Asset-v2 access. *(The requests already send the required `x-app-type` header — without both, every call returns `603 Access denied`, on every email.)* |
 | Redirect-rule tools (`no LP domains configured`) | Configure a **landing-page domain (CNAME)** on the instance |
 | `campaign-not-activatable`, `email has no modules`, `no dynamic content`, `freeForm LP has no variables`, pre-existing form fields, `not-an-email-program` | **Inherent** — the operation legitimately doesn't apply to the minimal test fixtures. Forcing them would mean building elaborate trigger campaigns / modular emails / segmentations for little added confidence, so the suite skips them by design. |
 
 Reordering steps does **not** help — these are permission/feature/state
 conditions, not ordering problems. The two big levers are entirely in your
 hands: grant the API role the schema + user-management permissions, and (if you
-use it) enable Emails 2.0.
+use it) enable the new Email Designer.
 
 #### 1. Read-only tests
 A mutation-free discovery pass: it browses each asset type (folders, lists,
@@ -175,7 +238,7 @@ tested.
 *Why it runs ~330 steps* — far more than the number of write tools. Three
 things multiply the count:
 1. **Dependencies.** Most write tools can't run in isolation — they need a
-   parent asset to act on. Testing `custom_update_email` first needs an email,
+   parent asset to act on. Testing `custom_update_email_legacy` first needs an email,
    which needs a template, which needs a folder; testing
    `custom_delete_program_members` needs a program with a member, which needs a
    lead and the instance's required tags. So each write is preceded by the

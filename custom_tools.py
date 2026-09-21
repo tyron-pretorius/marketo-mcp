@@ -6,6 +6,23 @@ All names carry a `custom_` prefix and descriptions start with [CUSTOM] so
 clients (and their accept/reject prompts) can tell at a glance whether a call
 goes through Adobe's native MCP (unprefixed) or directly to the Marketo REST
 API (custom_*).
+
+EDITOR VERSIONS — Marketo has three generations of email authoring, and their
+APIs do not overlap:
+  * Email Editor 1.0 / 2.0 (classic, section- and module-based) -> Asset v1.
+    Tools: Adobe's native legacy_email_* (create/get/content/approve) plus the
+    custom_*_email_legacy / custom_*_email_template_legacy tools in
+    marketo_rest/email_tools.
+  * New Email Designer ("Editor 3.0", internally "Acrite"; block-based, built
+    on themes and fragments) -> Asset v2. Tools: the UNSUFFIXED custom_*_email
+    / custom_*_email_template names and the custom_*_fragment tools in
+    marketo_rest/v2_admin_tools. Adobe's native MCP
+    has no Designer tools at all.
+Wrong-family symptoms: 709 "Cannot access content for Acrite Email asset" means
+a v1 tool hit a Designer email. 603 "Access denied" from a v2 tool means the
+instance lacks the new Email Designer or the API role lacks Asset v2 access —
+it is a permissions problem, not a wrong-asset problem, and will affect every
+email equally.
 """
 
 from fastmcp import FastMCP
@@ -86,21 +103,25 @@ def register_custom_tools(mcp: FastMCP, creds_provider=None):
                      activity_type_ids, days_back)
 
     # ========================================================================
-    # Emails
+    # Emails (send/preview — Asset v1; see note below on editor versions)
     # ========================================================================
 
     @mcp.tool()
-    def custom_send_sample_email(email_id: int, email_address: str, text_only: bool = False,
+    def custom_send_sample_email_legacy(email_id: int, email_address: str, text_only: bool = False,
                                  lead_id: int = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [EMAIL EDITOR 1.0/2.0 EMAILS ONLY — the Asset v1 send/preview endpoints
+        do not serve new Email Designer (Editor 3.0 / 'Acrite') assets]
         Send a sample of an email asset to an email address. Optionally
         impersonate a lead for token/dynamic-content rendering via lead_id."""
         return _call(marketo_functions.sendSampleEmail, email_id, email_address, text_only, lead_id)
 
     @mcp.tool()
-    def custom_preview_email(email_id: int, status: str = None, content_type: str = "HTML",
+    def custom_preview_email_legacy(email_id: int, status: str = None, content_type: str = "HTML",
                              lead_id: int = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [EMAIL EDITOR 1.0/2.0 EMAILS ONLY — the Asset v1 send/preview endpoints
+        do not serve new Email Designer (Editor 3.0 / 'Acrite') assets]
         Get the full rendered content of an email as it would be sent."""
         return _call(marketo_functions.previewEmail, email_id, status, content_type, lead_id)
 

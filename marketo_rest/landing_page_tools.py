@@ -355,18 +355,33 @@ def register(mcp: FastMCP, creds_provider=None):
     @mcp.tool()
     def custom_delete_snippet(snippet_id: int) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [ASSET-LEVEL — a snippet is a reusable-content mechanism available in
+        Email Editor 1.0/2.0 emails AND in landing pages. New Email Designer
+        (Editor 3.0) emails do not use snippets at all; their reusable content
+        is fragments (custom_*_fragment). Landing pages are unaffected by the
+        editor distinction.]
         Delete a snippet. The snippet must not be in use by other assets."""
         return _call(mf.deleteSnippet, snippet_id)
 
     @mcp.tool()
     def custom_discard_snippet_draft(snippet_id: int) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [ASSET-LEVEL — a snippet is a reusable-content mechanism available in
+        Email Editor 1.0/2.0 emails AND in landing pages. New Email Designer
+        (Editor 3.0) emails do not use snippets at all; their reusable content
+        is fragments (custom_*_fragment). Landing pages are unaffected by the
+        editor distinction.]
         Discard the draft version of a snippet."""
         return _call(mf.discardSnippetDraft, snippet_id)
 
     @mcp.tool()
     def custom_unapprove_snippet(snippet_id: int) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [ASSET-LEVEL — a snippet is a reusable-content mechanism available in
+        Email Editor 1.0/2.0 emails AND in landing pages. New Email Designer
+        (Editor 3.0) emails do not use snippets at all; their reusable content
+        is fragments (custom_*_fragment). Landing pages are unaffected by the
+        editor distinction.]
         Unapprove a snippet, reverting it to draft-only."""
         return _call(mf.unapproveSnippet, snippet_id)
 

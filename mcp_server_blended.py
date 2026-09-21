@@ -32,6 +32,7 @@ from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 
 from credentials import extract_marketo_headers
 from custom_tools import register_custom_tools
+from marketo_rest.native_tags import EditorVersionTags
 
 # Overridable so the proxy path can be tested against a local stub upstream.
 NATIVE_MCP_URL = os.environ.get("NATIVE_MARKETO_MCP_URL", "https://marketo-mcp.adobe.io/mcp")
@@ -52,9 +53,15 @@ def upstream_client_factory() -> ProxyClient:
 # tools/list to the local custom_* tools with a warning — important for
 # clients that import the tool list at session start (e.g. OpenAI agents).
 # Native tool *calls* still surface upstream errors normally.
+# Adobe's native email tools are named legacy_email_* but never say which
+# editor that means; EditorVersionTags prepends the same editor tag the
+# custom_* tools carry, so both halves of the server signal it identically.
+_native = ProxyProvider(upstream_client_factory)
+_native.add_transform(EditorVersionTags())
+
 mcp = FastMCP(
     name="MarketoBlendedMCP",
-    providers=[ProxyProvider(upstream_client_factory)],
+    providers=[_native],
 )
 
 register_custom_tools(mcp)
