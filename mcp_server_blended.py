@@ -12,12 +12,13 @@ custom tools:
 
     x-client-id       REST API client ID (Admin > LaunchPoint)
     x-client-secret   REST API client secret
-    x-munchkin-id     Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
+    x-workspace-id    Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
 
-The first two are offered by name in Claude Desktop's "Add custom connector"
-header dropdown, so setting up a connector is mostly picking from a list.
-Adobe's native server is still addressed with its own X-Marketo-* names;
-credentials.py translates on the way out.
+Claude Desktop's "Add custom connector" form only accepts header names from
+its own dropdown, so all three are picked from that list — which is why the
+Munchkin ID travels under the generic name x-workspace-id. Adobe's native
+server is still addressed with its own X-Marketo-* names; credentials.py
+translates on the way out.
 
 Tool naming: unprefixed tools are mirrored live from the native server;
 custom_* tools call the Marketo REST API directly from this server. On any

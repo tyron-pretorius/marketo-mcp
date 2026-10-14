@@ -5,11 +5,12 @@ Clients send three headers on every request:
 
     x-client-id       REST API client ID (LaunchPoint service)
     x-client-secret   REST API client secret
-    x-munchkin-id     Instance Munchkin ID, e.g. 123-ABC-456
+    x-workspace-id    Instance Munchkin ID, e.g. 123-ABC-456
 
-Claude Desktop's "Add custom connector" form offers x-client-id and
-x-client-secret in its header-name dropdown, so two of the three are picked
-from a list rather than typed.
+All three names come from the header-name dropdown in Claude Desktop's "Add
+custom connector" form, which rejects names outside its own list. That is why
+the Munchkin ID travels as x-workspace-id: the generic name is the one the
+form allows. It carries a Munchkin ID and nothing else.
 
 Adobe's native MCP server still expects its own X-Marketo-* header names, so
 extract_marketo_headers() translates on the way upstream. That translation is
@@ -32,12 +33,13 @@ from fastmcp.server.dependencies import get_http_headers
 # before they ever reached this server.
 HEADER_CLIENT_ID = "x-client-id"
 HEADER_CLIENT_SECRET = "x-client-secret"
-HEADER_MUNCHKIN_ID = "x-munchkin-id"
+HEADER_MUNCHKIN_ID = "x-workspace-id"
 
 REQUIRED_HEADERS = (HEADER_CLIENT_ID, HEADER_CLIENT_SECRET, HEADER_MUNCHKIN_ID)
 
 _MISSING_HEADERS_HELP = (
-    "Send x-client-id, x-client-secret, and x-munchkin-id on every MCP request."
+    "Send x-client-id, x-client-secret, and x-workspace-id (your Munchkin ID) "
+    "on every MCP request."
 )
 
 

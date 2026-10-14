@@ -80,7 +80,7 @@ def _get_live_headers() -> dict:
     return {
         "x-client-id": client_id,
         "x-client-secret": client_secret,
-        "x-munchkin-id": munchkin_id,
+        "x-workspace-id": munchkin_id,
     }
 
 
@@ -2072,7 +2072,7 @@ def _full_headers():
     return {
         "x-client-id": os.environ["MARKETO_CLIENT_ID"],
         "x-client-secret": os.environ["MARKETO_CLIENT_SECRET"],
-        "x-munchkin-id": os.environ["MARKETO_MUNCHKIN_ID"],
+        "x-workspace-id": os.environ["MARKETO_MUNCHKIN_ID"],
     }
 
 

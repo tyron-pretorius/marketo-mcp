@@ -24,9 +24,9 @@ No credentials live on this server or in `.env` — clients send three headers o
 |---|---|
 | `x-client-id` | REST API client ID (Admin > LaunchPoint) |
 | `x-client-secret` | REST API client secret |
-| `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+| `x-workspace-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
 
-The names are generic on purpose: Claude Desktop's connector form offers `x-client-id` and `x-client-secret` in its header-name dropdown, so two of the three are picked from a list instead of typed.
+The names are generic on purpose. Claude Desktop's connector form only accepts header names from its own dropdown — anything else is rejected — so all three are picked from that list. That is why the Munchkin ID travels as `x-workspace-id`: it is the name the form allows, and it carries a Munchkin ID like any other instance identifier.
 
 For proxied tools the credentials are re-sent to Adobe under the `X-Marketo-*` header names its native server expects; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry). That translation happens inside [credentials.py](credentials.py) — this server itself accepts only the three names above. The REST base URL is always derived from the Munchkin ID (`https://<munchkin-id>.mktorest.com`); there is no override header.
 
@@ -53,7 +53,7 @@ Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client):
       "headers": {
         "x-client-id": "YOUR-CLIENT-ID",
         "x-client-secret": "YOUR-CLIENT-SECRET",
-        "x-munchkin-id": "YOUR-MUNCHKIN-ID"
+        "x-workspace-id": "YOUR-MUNCHKIN-ID"
       }
     }
   }
@@ -67,17 +67,17 @@ The blended server is a remote MCP server, so Claude connects to it directly —
 1. Open Claude Desktop (or Claude on the web).
 2. Go to **Settings > Connectors > Add custom connector**.
 3. Give it a name (e.g. `Marketo`) and paste the server URL, ending in `/mcp` — for example `https://your-deployment.example.com/mcp`.
-4. Continue to the second page. Under **request headers**, add three:
+4. Continue to the second page. Under **request headers**, add three — all three names are in the dropdown, so pick each one rather than typing it (**Custom header…** names are rejected unless Anthropic has allowlisted them):
 
    | Header name | Where to find it | How to add it |
    |---|---|---|
    | `x-client-id` | Marketo REST client ID (Admin > LaunchPoint) | Pick from the dropdown |
    | `x-client-secret` | Marketo REST client secret | Pick from the dropdown |
-   | `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) | Choose **Custom header…** and type the name |
+   | `x-workspace-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) | Pick from the dropdown |
 
 Claude stores the values securely and sends them with every request. Each person connects with their own Marketo credentials, so tool calls run as that user's LaunchPoint service and respect its API role permissions.
 
-The server must be reachable over HTTPS from Claude's servers — a `localhost` URL will not work. To run the server on your own machine instead, bridge it into Claude Desktop with `mcp-remote`: [marketo-mcp-claude-desktop-setup.md](marketo-mcp-claude-desktop-setup.md) is that runbook for Adobe's native server, and the same steps work here with this server's URL and the `x-client-id` / `x-client-secret` / `x-munchkin-id` header names.
+The server must be reachable over HTTPS from Claude's servers — a `localhost` URL will not work. To run the server on your own machine instead, bridge it into Claude Desktop with `mcp-remote`: [marketo-mcp-claude-desktop-setup.md](marketo-mcp-claude-desktop-setup.md) is that runbook for Adobe's native server, and the same steps work here with this server's URL and the `x-client-id` / `x-client-secret` / `x-workspace-id` header names.
 
 > **Security:** credentials transit as HTTP headers — only expose this server over TLS (or keep it on localhost / a trusted network), and never log header values.
 
