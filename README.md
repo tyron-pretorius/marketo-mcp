@@ -25,11 +25,10 @@ No credentials live on this server or in `.env` — clients send three headers o
 | `x-client-id` | REST API client ID (Admin > LaunchPoint) |
 | `x-client-secret` | REST API client secret |
 | `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
-| `x-endpoint` | *(optional)* REST base URL override, **without** `/rest` |
 
 The names are generic on purpose: Claude Desktop's connector form offers `x-client-id` and `x-client-secret` in its header-name dropdown, so two of the three are picked from a list instead of typed.
 
-For proxied tools the credentials are re-sent to Adobe under the `X-Marketo-*` header names its native server expects; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry). That translation happens inside [credentials.py](credentials.py) — this server itself accepts only the three short names above.
+For proxied tools the credentials are re-sent to Adobe under the `X-Marketo-*` header names its native server expects; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry). That translation happens inside [credentials.py](credentials.py) — this server itself accepts only the three names above. The REST base URL is always derived from the Munchkin ID (`https://<munchkin-id>.mktorest.com`); there is no override header.
 
 > **Note:** Adobe's native MCP server is in limited availability — your Munchkin ID must be allowlisted by Adobe. Until then, the proxied tools will fail upstream, but all `custom_*` tools work with any valid REST API credentials.
 
@@ -75,8 +74,6 @@ The blended server is a remote MCP server, so Claude connects to it directly —
    | `x-client-id` | Marketo REST client ID (Admin > LaunchPoint) | Pick from the dropdown |
    | `x-client-secret` | Marketo REST client secret | Pick from the dropdown |
    | `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) | Choose **Custom header…** and type the name |
-
-5. Add a fourth header, `x-endpoint`, only if your instance uses a REST base URL that isn't `https://<munchkin>.mktorest.com` — leave the `/rest` suffix off.
 
 Claude stores the values securely and sends them with every request. Each person connects with their own Marketo credentials, so tool calls run as that user's LaunchPoint service and respect its API role permissions.
 

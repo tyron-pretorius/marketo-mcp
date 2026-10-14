@@ -13,7 +13,6 @@ custom tools:
     x-client-id       REST API client ID (Admin > LaunchPoint)
     x-client-secret   REST API client secret
     x-munchkin-id     Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
-    x-endpoint        (optional) REST base URL override, without /rest
 
 The first two are offered by name in Claude Desktop's "Add custom connector"
 header dropdown, so setting up a connector is mostly picking from a list.
