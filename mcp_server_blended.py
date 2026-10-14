@@ -10,15 +10,15 @@ Authentication: clients send three headers on every request, which are
 forwarded upstream for proxied tools and used to mint Marketo REST tokens for
 custom tools:
 
-    client-id        REST API client ID (Admin > LaunchPoint)
-    client-secret    REST API client secret
-    munchkin         Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
-    endpoint         (optional) REST base URL override, without /rest
+    x-client-id       REST API client ID (Admin > LaunchPoint)
+    x-client-secret   REST API client secret
+    x-munchkin-id     Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
+    x-endpoint        (optional) REST base URL override, without /rest
 
-The names are deliberately short and unprefixed so they can be typed straight
-into Claude Desktop's "Add custom connector" header fields. Adobe's native
-server is still addressed with its own X-Marketo-* names; credentials.py
-translates on the way out.
+The first two are offered by name in Claude Desktop's "Add custom connector"
+header dropdown, so setting up a connector is mostly picking from a list.
+Adobe's native server is still addressed with its own X-Marketo-* names;
+credentials.py translates on the way out.
 
 Tool naming: unprefixed tools are mirrored live from the native server;
 custom_* tools call the Marketo REST API directly from this server. On any

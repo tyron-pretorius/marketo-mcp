@@ -3,14 +3,14 @@ Per-request Marketo credential handling for the blended MCP server.
 
 Clients send three headers on every request (plus one optional override):
 
-    client-id        REST API client ID (LaunchPoint service)
-    client-secret    REST API client secret
-    munchkin         Instance Munchkin ID, e.g. 123-ABC-456
-    endpoint         (optional) REST base URL override, without /rest
+    x-client-id       REST API client ID (LaunchPoint service)
+    x-client-secret   REST API client secret
+    x-munchkin-id     Instance Munchkin ID, e.g. 123-ABC-456
+    x-endpoint        (optional) REST base URL override, without /rest
 
-These short names are what Claude Desktop's "Add custom connector" form asks
-for, so a connector can be set up by typing the same three values Marketo shows
-in Admin, with no vendor-prefixed header names to get wrong.
+Claude Desktop's "Add custom connector" form offers x-client-id and
+x-client-secret in its header-name dropdown, so two of the three are picked
+from a list rather than typed.
 
 Adobe's native MCP server still expects its own X-Marketo-* header names, so
 extract_marketo_headers() translates on the way upstream. That translation is
@@ -31,16 +31,16 @@ from fastmcp.server.dependencies import get_http_headers
 # Hyphens, not underscores: nginx and several other reverse proxies drop
 # headers containing underscores by default, which would strip the credentials
 # before they ever reached this server.
-HEADER_CLIENT_ID = "client-id"
-HEADER_CLIENT_SECRET = "client-secret"
-HEADER_MUNCHKIN_ID = "munchkin"
-HEADER_ENDPOINT = "endpoint"
+HEADER_CLIENT_ID = "x-client-id"
+HEADER_CLIENT_SECRET = "x-client-secret"
+HEADER_MUNCHKIN_ID = "x-munchkin-id"
+HEADER_ENDPOINT = "x-endpoint"
 
 REQUIRED_HEADERS = (HEADER_CLIENT_ID, HEADER_CLIENT_SECRET, HEADER_MUNCHKIN_ID)
 
 _MISSING_HEADERS_HELP = (
-    "Send client-id, client-secret, and munchkin (and optionally endpoint) "
-    "on every MCP request."
+    "Send x-client-id, x-client-secret, and x-munchkin-id (and optionally "
+    "x-endpoint) on every MCP request."
 )
 
 

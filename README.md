@@ -22,12 +22,12 @@ No credentials live on this server or in `.env` — clients send three headers o
 
 | Header | Value |
 |---|---|
-| `client-id` | REST API client ID (Admin > LaunchPoint) |
-| `client-secret` | REST API client secret |
-| `munchkin` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
-| `endpoint` | *(optional)* REST base URL override, **without** `/rest` |
+| `x-client-id` | REST API client ID (Admin > LaunchPoint) |
+| `x-client-secret` | REST API client secret |
+| `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+| `x-endpoint` | *(optional)* REST base URL override, **without** `/rest` |
 
-The names are short and unprefixed on purpose: they are typed by hand into Claude Desktop's connector form, and they match what Marketo calls these values in Admin, so there is nothing to translate.
+The names are generic on purpose: Claude Desktop's connector form offers `x-client-id` and `x-client-secret` in its header-name dropdown, so two of the three are picked from a list instead of typed.
 
 For proxied tools the credentials are re-sent to Adobe under the `X-Marketo-*` header names its native server expects; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry). That translation happens inside [credentials.py](credentials.py) — this server itself accepts only the three short names above.
 
@@ -52,9 +52,9 @@ Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client):
       "type": "http",
       "url": "http://localhost:8000/mcp",
       "headers": {
-        "client-id": "YOUR-CLIENT-ID",
-        "client-secret": "YOUR-CLIENT-SECRET",
-        "munchkin": "YOUR-MUNCHKIN-ID"
+        "x-client-id": "YOUR-CLIENT-ID",
+        "x-client-secret": "YOUR-CLIENT-SECRET",
+        "x-munchkin-id": "YOUR-MUNCHKIN-ID"
       }
     }
   }
@@ -70,17 +70,17 @@ The blended server is a remote MCP server, so Claude connects to it directly —
 3. Give it a name (e.g. `Marketo`) and paste the server URL, ending in `/mcp` — for example `https://your-deployment.example.com/mcp`.
 4. Continue to the second page. Under **request headers**, add three:
 
-   | Header name | Value |
-   |---|---|
-   | `client-id` | Your Marketo REST client ID (Admin > LaunchPoint) |
-   | `client-secret` | Your Marketo REST client secret |
-   | `munchkin` | Your Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+   | Header name | Where to find it | How to add it |
+   |---|---|---|
+   | `x-client-id` | Marketo REST client ID (Admin > LaunchPoint) | Pick from the dropdown |
+   | `x-client-secret` | Marketo REST client secret | Pick from the dropdown |
+   | `x-munchkin-id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) | Choose **Custom header…** and type the name |
 
-5. Add a fourth header, `endpoint`, only if your instance uses a REST base URL that isn't `https://<munchkin>.mktorest.com` — leave the `/rest` suffix off.
+5. Add a fourth header, `x-endpoint`, only if your instance uses a REST base URL that isn't `https://<munchkin>.mktorest.com` — leave the `/rest` suffix off.
 
 Claude stores the values securely and sends them with every request. Each person connects with their own Marketo credentials, so tool calls run as that user's LaunchPoint service and respect its API role permissions.
 
-The server must be reachable over HTTPS from Claude's servers — a `localhost` URL will not work. To run the server on your own machine instead, bridge it into Claude Desktop with `mcp-remote`: [marketo-mcp-claude-desktop-setup.md](marketo-mcp-claude-desktop-setup.md) is that runbook for Adobe's native server, and the same steps work here with this server's URL and the `client-id` / `client-secret` / `munchkin` header names.
+The server must be reachable over HTTPS from Claude's servers — a `localhost` URL will not work. To run the server on your own machine instead, bridge it into Claude Desktop with `mcp-remote`: [marketo-mcp-claude-desktop-setup.md](marketo-mcp-claude-desktop-setup.md) is that runbook for Adobe's native server, and the same steps work here with this server's URL and the `x-client-id` / `x-client-secret` / `x-munchkin-id` header names.
 
 > **Security:** credentials transit as HTTP headers — only expose this server over TLS (or keep it on localhost / a trusted network), and never log header values.
 

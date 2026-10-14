@@ -78,9 +78,9 @@ def _get_live_headers() -> dict:
     client_secret = os.environ.get("MARKETO_CLIENT_SECRET") or input("Marketo Client Secret: ").strip()
     munchkin_id = os.environ.get("MARKETO_MUNCHKIN_ID") or input("Marketo Munchkin ID (e.g. 123-ABC-456): ").strip()
     return {
-        "client-id": client_id,
-        "client-secret": client_secret,
-        "munchkin": munchkin_id,
+        "x-client-id": client_id,
+        "x-client-secret": client_secret,
+        "x-munchkin-id": munchkin_id,
     }
 
 
@@ -2070,9 +2070,9 @@ def _full_headers():
         print(f"Missing credentials ({', '.join(missing)}); set env vars or .env / .env.sandbox.")
         sys.exit(2)
     return {
-        "client-id": os.environ["MARKETO_CLIENT_ID"],
-        "client-secret": os.environ["MARKETO_CLIENT_SECRET"],
-        "munchkin": os.environ["MARKETO_MUNCHKIN_ID"],
+        "x-client-id": os.environ["MARKETO_CLIENT_ID"],
+        "x-client-secret": os.environ["MARKETO_CLIENT_SECRET"],
+        "x-munchkin-id": os.environ["MARKETO_MUNCHKIN_ID"],
     }
 
 
