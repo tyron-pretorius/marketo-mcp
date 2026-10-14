@@ -18,16 +18,18 @@ On any name conflict, the local `custom_*` tools win (and the prefix makes confl
 
 ### Authentication
 
-Identical to Adobe's native MCP server — no credentials live on this server or in `.env`. Clients send these headers on **every** request:
+No credentials live on this server or in `.env` — clients send three headers on **every** request:
 
 | Header | Value |
 |---|---|
-| `X-Marketo-Client-Id` | REST API client ID (Admin > LaunchPoint) |
-| `X-Marketo-Client-Secret` | REST API client secret |
-| `X-Marketo-Munchkin-Id` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
-| `X-Marketo-Endpoint` | *(optional)* REST base URL override, **without** `/rest` |
+| `client-id` | REST API client ID (Admin > LaunchPoint) |
+| `client-secret` | REST API client secret |
+| `munchkin` | Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+| `endpoint` | *(optional)* REST base URL override, **without** `/rest` |
 
-For proxied tools the headers are forwarded to Adobe verbatim; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry).
+The names are short and unprefixed on purpose: they are typed by hand into Claude Desktop's connector form, and they match what Marketo calls these values in Admin, so there is nothing to translate.
+
+For proxied tools the credentials are re-sent to Adobe under the `X-Marketo-*` header names its native server expects; for custom tools they are exchanged for a Marketo REST OAuth token (cached per credential set until near expiry). That translation happens inside [credentials.py](credentials.py) — this server itself accepts only the three short names above.
 
 > **Note:** Adobe's native MCP server is in limited availability — your Munchkin ID must be allowlisted by Adobe. Until then, the proxied tools will fail upstream, but all `custom_*` tools work with any valid REST API credentials.
 
@@ -41,7 +43,7 @@ The listen port comes from the `PORT` env var when set (Replit and most PaaS inj
 
 If the native Adobe server can't be reached (missing headers, Munchkin ID not yet allowlisted, upstream outage), `tools/list` degrades gracefully to the `custom_*` tools instead of failing — so clients that import the tool list at session start (e.g. OpenAI agents) still connect.
 
-Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client) — same shape as Adobe's, just pointed at this server:
+Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client):
 
 ```json
 {
@@ -50,16 +52,35 @@ Example `mcp.json` (VS Code / Cursor / any HTTP-capable MCP client) — same sha
       "type": "http",
       "url": "http://localhost:8000/mcp",
       "headers": {
-        "X-Marketo-Client-Id": "YOUR-CLIENT-ID",
-        "X-Marketo-Client-Secret": "YOUR-CLIENT-SECRET",
-        "X-Marketo-Munchkin-Id": "YOUR-MUNCHKIN-ID"
+        "client-id": "YOUR-CLIENT-ID",
+        "client-secret": "YOUR-CLIENT-SECRET",
+        "munchkin": "YOUR-MUNCHKIN-ID"
       }
     }
   }
 }
 ```
 
-For stdio-only clients (e.g. Claude Desktop), bridge with `mcp-remote` and `--header` flags, exactly as in Adobe's docs.
+#### Connecting Claude Desktop or Claude Web
+
+The blended server is a remote MCP server, so Claude connects to it directly — no `mcp-remote` bridge, no `claude_desktop_config.json` edit, no local Python. Setup is a URL and three headers:
+
+1. Open Claude Desktop (or Claude on the web).
+2. Go to **Settings > Connectors > Add custom connector**.
+3. Give it a name (e.g. `Marketo`) and paste the server URL, ending in `/mcp` — for example `https://your-deployment.example.com/mcp`.
+4. Continue to the second page. Under **request headers**, add three:
+
+   | Header name | Value |
+   |---|---|
+   | `client-id` | Your Marketo REST client ID (Admin > LaunchPoint) |
+   | `client-secret` | Your Marketo REST client secret |
+   | `munchkin` | Your Munchkin ID, e.g. `123-ABC-456` (Admin > Munchkin) |
+
+5. Add a fourth header, `endpoint`, only if your instance uses a REST base URL that isn't `https://<munchkin>.mktorest.com` — leave the `/rest` suffix off.
+
+Claude stores the values securely and sends them with every request. Each person connects with their own Marketo credentials, so tool calls run as that user's LaunchPoint service and respect its API role permissions.
+
+The server must be reachable over HTTPS from Claude's servers — a `localhost` URL will not work. To run the server on your own machine instead, bridge it into Claude Desktop with `mcp-remote`: [marketo-mcp-claude-desktop-setup.md](marketo-mcp-claude-desktop-setup.md) is that runbook for Adobe's native server, and the same steps work here with this server's URL and the `client-id` / `client-secret` / `munchkin` header names.
 
 > **Security:** credentials transit as HTTP headers — only expose this server over TLS (or keep it on localhost / a trusted network), and never log header values.
 
@@ -358,13 +379,13 @@ You can find these in **Marketo Admin > LaunchPoint** (for client ID/secret) and
 
 There are two server scripts to choose from:
 
-#### `mcp_server.py` — No authentication (for Claude Desktop)
+#### `mcp_server.py` — No authentication
 
 ```bash
 python mcp_server.py
 ```
 
-Use this when connecting from **Claude Desktop**, which only supports OAuth 2.0 authentication for custom connectors. This server has no auth layer, so it should only be exposed on trusted networks or behind a reverse proxy that handles authentication.
+This server has no auth layer at all, so it should only be exposed on trusted networks or behind a reverse proxy that handles authentication.
 
 #### `mcp_server_auth.py` — Bearer token authentication (for OpenAI and other clients)
 
@@ -384,7 +405,7 @@ Add the key to your `.env`:
 MCP_API_KEY="your-secret-api-key"
 ```
 
-> **Why two servers?** Claude Desktop's custom connector only supports OAuth 2.0 (Client ID / Client Secret). It has no way to send a static bearer token, so `mcp_server_auth.py` cannot be used with Claude Desktop. For Claude Desktop, use `mcp_server.py` instead.
+> **Why two servers?** `mcp_server_auth.py` gates the endpoint with one shared key for every caller; `mcp_server.py` leaves gating to whatever sits in front of it. Both read one instance's credentials from `.env`, so everyone connected shares a single Marketo login — unlike the blended server, where each client sends its own. Claude Desktop can connect to either via custom-connector request headers.
 
 Both servers start on `http://0.0.0.0:8000` using the Streamable HTTP transport. The MCP endpoint is available at `http://localhost:8000/mcp`.
 
@@ -545,7 +566,7 @@ targets from the instance. Delete `test_config.json` to reset interactive inputs
 MarketoMCP/
 ├── marketo_functions.py         # THE API library — all 325 Marketo REST functions
 ├── mcp_server_blended.py        # Blended server: native-MCP proxy + custom_* tools (header auth)
-├── mcp_server.py                # Legacy server — no auth (for Claude Desktop)
+├── mcp_server.py                # Legacy server — no auth layer
 ├── mcp_server_auth.py           # Legacy server — bearer token auth (OpenAI etc.)
 ├── custom_tools.py              # custom_* tool wrappers (registers the marketo_rest modules)
 ├── marketo_rest/                # Domain tool modules + bridge.py (creds/token plumbing)

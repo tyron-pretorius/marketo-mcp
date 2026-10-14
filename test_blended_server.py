@@ -17,7 +17,7 @@ Run it with no arguments and choose a mode at the menu:
   Full suite
       Comprehensive end-to-end suite against a REAL Marketo sandbox. Starts
       the blended server itself (subprocess, PORT=8000), connects with the
-      X-Marketo-* headers (read from the environment, .env, or .env.sandbox), and
+      credential headers (read from the environment, .env, or .env.sandbox), and
       exercises EVERY custom_* tool plus a native-tool smoke set
       (browse_folders, browse_channels, describe_lead, get_leads_by_filter,
       browse_programs, browse_forms, browse_smart_campaigns, browse_lists,
@@ -78,9 +78,9 @@ def _get_live_headers() -> dict:
     client_secret = os.environ.get("MARKETO_CLIENT_SECRET") or input("Marketo Client Secret: ").strip()
     munchkin_id = os.environ.get("MARKETO_MUNCHKIN_ID") or input("Marketo Munchkin ID (e.g. 123-ABC-456): ").strip()
     return {
-        "X-Marketo-Client-Id": client_id,
-        "X-Marketo-Client-Secret": client_secret,
-        "X-Marketo-Munchkin-Id": munchkin_id,
+        "client-id": client_id,
+        "client-secret": client_secret,
+        "munchkin": munchkin_id,
     }
 
 
@@ -2070,9 +2070,9 @@ def _full_headers():
         print(f"Missing credentials ({', '.join(missing)}); set env vars or .env / .env.sandbox.")
         sys.exit(2)
     return {
-        "X-Marketo-Client-Id": os.environ["MARKETO_CLIENT_ID"],
-        "X-Marketo-Client-Secret": os.environ["MARKETO_CLIENT_SECRET"],
-        "X-Marketo-Munchkin-Id": os.environ["MARKETO_MUNCHKIN_ID"],
+        "client-id": os.environ["MARKETO_CLIENT_ID"],
+        "client-secret": os.environ["MARKETO_CLIENT_SECRET"],
+        "munchkin": os.environ["MARKETO_MUNCHKIN_ID"],
     }
 
 

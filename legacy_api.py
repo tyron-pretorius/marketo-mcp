@@ -1,8 +1,7 @@
 """
 Environment-credential plumbing so the legacy MCP servers (mcp_server.py,
 mcp_server_auth.py) can expose the same expanded tool set as the blended
-server. The blended server resolves credentials from X-Marketo-* request
-headers; the legacy servers resolve them from .env at call time.
+server. The blended server resolves credentials from request headers; the legacy servers resolve them from .env at call time.
 """
 
 import os

@@ -7,7 +7,7 @@ credentials through a provider, takes a cached OAuth token, routes the call to
 the right Marketo instance via marketo_functions.base_url_override, and
 retries once on Marketo 601/602 (invalid/expired token) errors.
 
-The blended server's provider reads the request's X-Marketo-* headers
+The blended server's provider reads the request's credential headers
 (credentials.get_marketo_creds); the legacy servers use legacy_api.env_creds.
 """
 

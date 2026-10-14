@@ -6,14 +6,19 @@ for every tool it exposes, and adds custom_* tools for the capabilities the
 native server lacks (lead create/update/merge, send sample email, landing
 pages, bulk lead import, and destructive operations).
 
-Authentication matches the native server: clients must send these headers on
-every request, which are forwarded upstream for proxied tools and used to mint
-Marketo REST tokens for custom tools:
+Authentication: clients send three headers on every request, which are
+forwarded upstream for proxied tools and used to mint Marketo REST tokens for
+custom tools:
 
-    X-Marketo-Client-Id
-    X-Marketo-Client-Secret
-    X-Marketo-Munchkin-Id
-    X-Marketo-Endpoint   (optional REST base URL override, without /rest)
+    client-id        REST API client ID (Admin > LaunchPoint)
+    client-secret    REST API client secret
+    munchkin         Munchkin ID, e.g. 123-ABC-456 (Admin > Munchkin)
+    endpoint         (optional) REST base URL override, without /rest
+
+The names are deliberately short and unprefixed so they can be typed straight
+into Claude Desktop's "Add custom connector" header fields. Adobe's native
+server is still addressed with its own X-Marketo-* names; credentials.py
+translates on the way out.
 
 Tool naming: unprefixed tools are mirrored live from the native server;
 custom_* tools call the Marketo REST API directly from this server. On any
@@ -40,7 +45,7 @@ NATIVE_MCP_URL = os.environ.get("NATIVE_MARKETO_MCP_URL", "https://marketo-mcp.a
 
 def upstream_client_factory() -> ProxyClient:
     # Called per request by the proxy provider, so the HTTP request context is
-    # active and the caller's X-Marketo-* headers can be forwarded upstream.
+    # active and the caller's credential headers can be forwarded upstream.
     # Cached proxy components store this factory (not a bound client), so every
     # native tool call re-runs it and uses the current caller's credentials.
     forward_headers = extract_marketo_headers()

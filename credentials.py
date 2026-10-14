@@ -1,13 +1,20 @@
 """
 Per-request Marketo credential handling for the blended MCP server.
 
-Clients authenticate exactly like Adobe's native Marketo MCP server, by sending
-three headers on every request (plus one optional override):
+Clients send three headers on every request (plus one optional override):
 
-    X-Marketo-Client-Id      REST API client ID (LaunchPoint service)
-    X-Marketo-Client-Secret  REST API client secret
-    X-Marketo-Munchkin-Id    Instance Munchkin ID, e.g. 123-ABC-456
-    X-Marketo-Endpoint       (optional) REST base URL override, without /rest
+    client-id        REST API client ID (LaunchPoint service)
+    client-secret    REST API client secret
+    munchkin         Instance Munchkin ID, e.g. 123-ABC-456
+    endpoint         (optional) REST base URL override, without /rest
+
+These short names are what Claude Desktop's "Add custom connector" form asks
+for, so a connector can be set up by typing the same three values Marketo shows
+in Admin, with no vendor-prefixed header names to get wrong.
+
+Adobe's native MCP server still expects its own X-Marketo-* header names, so
+extract_marketo_headers() translates on the way upstream. That translation is
+one-way: this server accepts only the short names from clients.
 
 No credentials are read from the environment.
 """
@@ -21,29 +28,32 @@ import requests
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 
-HEADER_CLIENT_ID = "x-marketo-client-id"
-HEADER_CLIENT_SECRET = "x-marketo-client-secret"
-HEADER_MUNCHKIN_ID = "x-marketo-munchkin-id"
-HEADER_ENDPOINT = "x-marketo-endpoint"
+# Hyphens, not underscores: nginx and several other reverse proxies drop
+# headers containing underscores by default, which would strip the credentials
+# before they ever reached this server.
+HEADER_CLIENT_ID = "client-id"
+HEADER_CLIENT_SECRET = "client-secret"
+HEADER_MUNCHKIN_ID = "munchkin"
+HEADER_ENDPOINT = "endpoint"
 
 REQUIRED_HEADERS = (HEADER_CLIENT_ID, HEADER_CLIENT_SECRET, HEADER_MUNCHKIN_ID)
 
 _MISSING_HEADERS_HELP = (
-    "Send X-Marketo-Client-Id, X-Marketo-Client-Secret, and X-Marketo-Munchkin-Id "
-    "(and optionally X-Marketo-Endpoint) on every MCP request."
+    "Send client-id, client-secret, and munchkin (and optionally endpoint) "
+    "on every MCP request."
 )
 
 
 def extract_marketo_headers() -> dict:
-    """Read the X-Marketo-* headers from the current HTTP request and return
-    them with canonical casing, ready to forward to the native Marketo MCP.
+    """Read the credential headers from the current HTTP request and return
+    them under the X-Marketo-* names the native Marketo MCP expects.
 
     Raises ToolError naming any missing header.
     """
     headers = get_http_headers()  # lowercased keys; {} outside HTTP context
     missing = [h for h in REQUIRED_HEADERS if not headers.get(h)]
     if missing:
-        pretty = ", ".join(h.title() for h in missing)
+        pretty = ", ".join(missing)
         raise ToolError(f"Missing Marketo auth headers: {pretty}. {_MISSING_HEADERS_HELP}")
 
     forward = {
@@ -77,7 +87,7 @@ def get_marketo_creds() -> MarketoCreds:
     headers = get_http_headers()
     missing = [h for h in REQUIRED_HEADERS if not headers.get(h)]
     if missing:
-        pretty = ", ".join(h.title() for h in missing)
+        pretty = ", ".join(missing)
         raise ToolError(f"Missing Marketo auth headers: {pretty}. {_MISSING_HEADERS_HELP}")
 
     return MarketoCreds(

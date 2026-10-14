@@ -41,7 +41,7 @@ from marketo_rest import (
 
 def register_custom_tools(mcp: FastMCP, creds_provider=None):
     """Register every custom tool. By default credentials come from the
-    current request's X-Marketo-* headers (blended server). The legacy
+    current request's credential headers (blended server). The legacy
     env-credential servers pass creds_provider=legacy_api.env_creds instead.
     All tools delegate to the single-source API library (marketo_functions)
     via marketo_rest.bridge.invoke."""
