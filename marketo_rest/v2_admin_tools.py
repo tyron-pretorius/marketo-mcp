@@ -13,10 +13,18 @@ The two families are NOT interchangeable. A v1 call against a Designer email
 returns 709 "Cannot access content for Acrite Email asset"; a v2 call against
 a classic email will not find it.
 
-Asset v2 endpoints live under /rest/asset/v2 (no .json suffix) and require the
-new Email Designer to be enabled on the Marketo instance, plus an API role
-granted Asset v2 access. Without both, every call here returns 603 "Access
-denied" regardless of which email is targeted. User Management
+Asset v2 endpoints live under /rest/asset/v2 (no .json suffix), require the new
+Email Designer to be enabled on the instance, and must send x-app-type: marketo
+-- the VALUE matters, and a wrong one is routed elsewhere rather than rejected
+(611 / 60050). The standard Read-Only/Read-Write/Approve Assets permissions
+cover them; Marketo has no separate "Asset v2" permission.
+
+603 "Access denied" here is usually a malformed request rather than a
+permission problem: an ID that is not a Designer asset (a classic numeric email
+ID does this), a filter call missing the required workspaceId, or the wrong
+method -- the used-by endpoints are POST with assetId in a JSON body, and a GET
+with ?id= returns 603. Designer emails use numeric IDs; templates and fragments
+use 24-character hex IDs. User Management
 endpoints live under /userservice/management/v1 and require an API role with
 the "Access User Management" permission. Tool bodies delegate to the
 single-source API library (marketo_functions.py) through
@@ -51,6 +59,22 @@ def register(mcp: FastMCP, creds_provider=None):
     # ========================================================================
 
     @mcp.tool()
+    def custom_browse_emails(workspace_id: int, folder_id: int = None,
+                             status: str = None, name: str = None,
+                             page_index: int = None, page_size: int = None,
+                             include_archived: bool = None) -> dict:
+        """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
+        [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
+        access; returns 603 'Access denied' if not granted]
+        Browse new Email Designer emails (Asset v2) in a workspace, optionally
+        filtered by folder, status or name. This is the only way to list
+        Designer emails: there is no get-by-name tool for them, and the
+        Asset v1 browse tools do not return them. workspace_id is required —
+        omitting it returns 603 rather than a validation error."""
+        return _call(mf.browseEmails2, workspace_id, folder_id, status, name,
+                     page_index, page_size, include_archived)
+
+    @mcp.tool()
     def custom_get_email_by_id(email_id: int) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
@@ -60,7 +84,7 @@ def register(mcp: FastMCP, creds_provider=None):
 
     @mcp.tool()
     def custom_create_email(name: str, app_data: dict, headers: dict,
-                             description: str = None, template_id: int = None,
+                             description: str = None, template_id: str = None,
                              theme_id: str = None, data: dict = None,
                              settings: dict = None, status: str = None,
                              editor_context: str = None) -> dict:
@@ -77,7 +101,7 @@ def register(mcp: FastMCP, creds_provider=None):
     @mcp.tool()
     def custom_update_email(email_id: int, name: str = None, description: str = None,
                              data: dict = None, headers: dict = None,
-                             settings: dict = None, template_id: int = None,
+                             settings: dict = None, template_id: str = None,
                              theme_id: str = None, status: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
@@ -145,7 +169,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      include_archived)
 
     @mcp.tool()
-    def custom_get_email_template_by_id(template_id: int) -> dict:
+    def custom_get_email_template_by_id(template_id: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
         access; returns 603 'Access denied' if not granted]
@@ -165,7 +189,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      theme_id, status, editor_context)
 
     @mcp.tool()
-    def custom_update_email_template(template_id: int, name: str = None,
+    def custom_update_email_template(template_id: str, name: str = None,
                                       description: str = None, data: dict = None,
                                       theme_id: str = None, status: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
@@ -177,7 +201,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      data, theme_id, status)
 
     @mcp.tool()
-    def custom_delete_email_template(template_id: int) -> dict:
+    def custom_delete_email_template(template_id: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
         access; returns 603 'Access denied' if not granted]
@@ -185,7 +209,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.deleteEmailTemplate2, template_id)
 
     @mcp.tool()
-    def custom_clone_email_template(template_id: int, name: str, folder_id: int,
+    def custom_clone_email_template(template_id: str, name: str, folder_id: int,
                                      extra: dict = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
@@ -195,7 +219,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.cloneEmailTemplate2, template_id, name, folder_id, extra)
 
     @mcp.tool()
-    def custom_transition_email_template_state(template_id: int, action: str) -> dict:
+    def custom_transition_email_template_state(template_id: str, action: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
         access; returns 603 'Access denied' if not granted]
@@ -204,7 +228,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.transitionEmailTemplate2State, template_id, action)
 
     @mcp.tool()
-    def custom_get_email_template_used_by(template_id: int, page_index: int = None,
+    def custom_get_email_template_used_by(template_id: str, page_index: int = None,
                                            page_size: int = None, type: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) EMAILS ONLY — requires Asset v2
@@ -237,7 +261,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      include_archived)
 
     @mcp.tool()
-    def custom_get_fragment_by_id(fragment_id: int) -> dict:
+    def custom_get_fragment_by_id(fragment_id: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) ONLY — fragments are the Designer's
         reusable-content mechanism. Email Editor 1.0/2.0 emails do not use
@@ -261,7 +285,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      data, theme_id, status)
 
     @mcp.tool()
-    def custom_update_fragment(fragment_id: int, name: str = None,
+    def custom_update_fragment(fragment_id: str, name: str = None,
                                description: str = None, data: dict = None,
                                settings: dict = None, status: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
@@ -275,7 +299,7 @@ def register(mcp: FastMCP, creds_provider=None):
                      settings, status)
 
     @mcp.tool()
-    def custom_delete_fragment(fragment_id: int) -> dict:
+    def custom_delete_fragment(fragment_id: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) ONLY — fragments are the Designer's
         reusable-content mechanism. Email Editor 1.0/2.0 emails do not use
@@ -285,7 +309,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.deleteFragment, fragment_id)
 
     @mcp.tool()
-    def custom_clone_fragment(fragment_id: int, name: str, folder_id: int,
+    def custom_clone_fragment(fragment_id: str, name: str, folder_id: int,
                               extra: dict = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) ONLY — fragments are the Designer's
@@ -297,7 +321,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.cloneFragment, fragment_id, name, folder_id, extra)
 
     @mcp.tool()
-    def custom_transition_fragment_state(fragment_id: int, action: str) -> dict:
+    def custom_transition_fragment_state(fragment_id: str, action: str) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) ONLY — fragments are the Designer's
         reusable-content mechanism. Email Editor 1.0/2.0 emails do not use
@@ -308,7 +332,7 @@ def register(mcp: FastMCP, creds_provider=None):
         return _call(mf.transitionFragmentState, fragment_id, action)
 
     @mcp.tool()
-    def custom_get_fragment_used_by(fragment_id: int, page_index: int = None,
+    def custom_get_fragment_used_by(fragment_id: str, page_index: int = None,
                                     page_size: int = None, type: str = None) -> dict:
         """[CUSTOM] Calls the Marketo REST API directly (not Adobe's native MCP).
         [NEW EMAIL DESIGNER (EDITOR 3.0) ONLY — fragments are the Designer's

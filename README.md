@@ -139,12 +139,26 @@ untagged until they are added to `TAGS`.
 | Error | Meaning |
 |---|---|
 | `709` *Cannot access content for Acrite Email asset* | A `_legacy` (or native `legacy_email_*`) tool was pointed at a new Email Designer email. Drop the `_legacy` suffix. |
-| `603` *Access denied* from an unsuffixed (Designer) tool | A **permissions/provisioning** problem, not a wrong-asset problem: the instance lacks the new Email Designer, or the API role lacks Asset v2 access. It affects every email equally — check by calling `custom_get_email_by_id` on any other email. |
+| `603` *Access denied* from an unsuffixed (Designer) tool | Usually a **malformed request**, not a permission problem. Asset v2 returns 603 where other APIs would return a validation error: for an ID that is not a Designer asset (a classic numeric email ID hits this), for a missing required `workspaceId` on a filter call, and for the wrong HTTP method or parameter name. Check the ID and the required parameters before suspecting permissions. |
+| `704` *x-app-type header is required* | The header was omitted. Every Asset v2 call must send `x-app-type: marketo`. |
+| `611` *Downstream API returned HTTP 500*, or `60050` *Content Wave Asset Not Found* | `x-app-type` was sent with an unrecognised **value**. Marketo does not reject a wrong value cleanly — it routes the request to a different application. The value must be exactly `marketo`. |
 
-Two Designer limits worth knowing: Asset v2 has no browse-emails endpoint
-(templates and fragments do have one), and its update call takes a whole `data`
-block rather than addressable sections — Designer content is not
-section-editable the way Editor 2.0 content is.
+**Asset v2 quirks**, all verified against a live instance:
+
+- **The header value matters.** Every call sends `x-app-type: marketo`. A wrong
+  value does not fail cleanly (see the error table above).
+- **ID types differ by asset.** Designer *emails* use numeric IDs (`"2139"`),
+  but *templates* and *fragments* use 24-character hex IDs
+  (`"6ae3204f9c1c190e487b2ec8"`) — hence `template_id: str` / `fragment_id: str`.
+- **`workspaceId` is required** on every filter/browse call; omitting it
+  returns 603, not a validation error. `sortKey`/`sortOrder` are rejected
+  with 1003 and are deliberately not exposed.
+- **used-by is a POST** with `assetId` in a JSON body, not a GET with `id`.
+  A GET returns 603, which reads like a permission problem and is not.
+- **Content comes back whole.** A Designer email's `data.html.body` holds the
+  full rendered HTML, and the update call takes a whole `data` block rather
+  than addressable sections — so Designer content is readable, but not
+  section-editable the way Editor 2.0 content is.
 
 **Reusable content: snippets vs fragments.** The two generations use different
 mechanisms, and all 14 snippet tools plus all 8 fragment tools are tagged
@@ -210,7 +224,7 @@ by changing the instance/role rather than the code:
 |---|---|
 | `permission(603)` on field-schema tools (lead / program-member / company / opportunity / named-account fields) | Grant the API user's role the **Read-Write Schema Standard/Custom Field** permissions (Admin → Users & Roles) |
 | User Management tools (`list_users`, `invite_user`, …) + the safety-gated user mutations | Grant the role the **Access User Management** permission |
-| Asset v2 / new Email Designer (23 tools) | Enable the **new Email Designer** on the instance and grant the role Asset-v2 access. *(The requests already send the required `x-app-type` header — without both, every call returns `603 Access denied`, on every email.)* |
+| Asset v2 / new Email Designer (24 tools) | Enable the **new Email Designer** on the instance. The standard **Read-Only / Read-Write / Approve Assets** permissions cover these calls — there is no separate "Asset v2" permission in Marketo's role tree. *(The requests already send the required `x-app-type: marketo` header.)* |
 | Redirect-rule tools (`no LP domains configured`) | Configure a **landing-page domain (CNAME)** on the instance |
 | `campaign-not-activatable`, `email has no modules`, `no dynamic content`, `freeForm LP has no variables`, pre-existing form fields, `not-an-email-program` | **Inherent** — the operation legitimately doesn't apply to the minimal test fixtures. Forcing them would mean building elaborate trigger campaigns / modular emails / segmentations for little added confidence, so the suite skips them by design. |
 

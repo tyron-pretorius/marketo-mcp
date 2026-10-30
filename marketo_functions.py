@@ -3038,12 +3038,42 @@ def deleteFolder(token, folderId, folderType="Folder"):
 # Asset v2 — Emails (new Email Designer / Editor 3.0; no .json suffix)
 # ============================================================================
 
+def browseEmails2(token, workspaceId, folderId=None, status=None, name=None,
+                  pageIndex=None, pageSize=None, includeArchived=None):
+    """Browse new Email Designer emails (Asset v2) in a workspace.
+
+    workspaceId is required: omitting it returns 603 Access denied rather than
+    a validation error. sortKey/sortOrder are not accepted by this endpoint
+    (they return 1003 Invalid request), so they are deliberately not exposed.
+    """
+    url = _base() + '/rest/asset/v2/email/filter'
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
+    params = {
+        'workspaceId': workspaceId,
+        'folderId': folderId,
+        'status': status,
+        'name': name,
+        'pageIndex': pageIndex,
+        'pageSize': pageSize,
+        'includeArchived': includeArchived,
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+    response = requests.get(url, headers=headers, params=params, timeout=30)
+    return response.json()
+
+
 def getEmail2ById(token, emailId):
     """Get a new Email Designer email by ID (Asset v2; requires the new Email Designer enabled)."""
     url = _base() + f'/rest/asset/v2/email/{emailId}'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3053,9 +3083,11 @@ def createEmail2(token, name, appData, emailHeaders, description=None,
                  status=None, editorContext=None):
     """Create a new Email Designer email (Asset v2). emailHeaders carries subject/fromName/fromEmail/replyTo."""
     url = _base() + '/rest/asset/v2/email'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'appData': appData,
@@ -3078,9 +3110,11 @@ def updateEmail2(token, emailId, name=None, description=None, data=None,
                  themeId=None, status=None):
     """Update a new Email Designer email (Asset v2): name, description, data, headers, settings, etc."""
     url = _base() + f'/rest/asset/v2/email/{emailId}/update'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'description': description,
@@ -3099,9 +3133,11 @@ def updateEmail2(token, emailId, name=None, description=None, data=None,
 def deleteEmail2(token, emailId):
     """Delete a new Email Designer email (Asset v2)."""
     url = _base() + f'/rest/asset/v2/email/{emailId}/delete'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3109,9 +3145,11 @@ def deleteEmail2(token, emailId):
 def cloneEmail2(token, emailId, name, folderId, extra=None):
     """Clone a new Email Designer email (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/email/clone'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3123,9 +3161,11 @@ def cloneEmail2(token, emailId, name, folderId, extra=None):
 def transitionEmail2State(token, emailId, action):
     """Transition a new Email Designer email's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/email/state/transition'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'contentId': emailId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3134,9 +3174,11 @@ def transitionEmail2State(token, emailId, action):
 def getEmail2UsedBy(token, emailId, pageIndex=None, pageSize=None, assetType=None):
     """List assets that use a new Email Designer email (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/email/usedby'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'assetId': emailId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
@@ -3153,9 +3195,11 @@ def browseEmailTemplates2(token, workspaceId, folderId=None, status=None,
                           sortKey=None, sortOrder=None, includeArchived=None):
     """Browse new Email Designer email templates (Asset v2) in a workspace."""
     url = _base() + '/rest/asset/v2/emailtemplate/filter'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     params = {
         'workspaceId': workspaceId,
         'folderId': folderId,
@@ -3175,9 +3219,11 @@ def browseEmailTemplates2(token, workspaceId, folderId=None, status=None,
 def getEmailTemplate2ById(token, templateId):
     """Get a new Email Designer email template by ID (Asset v2)."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3186,9 +3232,11 @@ def createEmailTemplate2(token, name, appData, description=None, data=None,
                          themeId=None, status=None, editorContext=None):
     """Create a new Email Designer email template (Asset v2). appData carries folder placement etc."""
     url = _base() + '/rest/asset/v2/emailtemplate'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'appData': appData,
@@ -3207,9 +3255,11 @@ def updateEmailTemplate2(token, templateId, name=None, description=None,
                          data=None, themeId=None, status=None):
     """Update a new Email Designer email template (Asset v2): name, description, data, themeId, status."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}/update'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'description': description,
@@ -3225,9 +3275,11 @@ def updateEmailTemplate2(token, templateId, name=None, description=None,
 def deleteEmailTemplate2(token, templateId):
     """Delete a new Email Designer email template (Asset v2)."""
     url = _base() + f'/rest/asset/v2/emailtemplate/{templateId}/delete'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3235,9 +3287,11 @@ def deleteEmailTemplate2(token, templateId):
 def cloneEmailTemplate2(token, templateId, name, folderId, extra=None):
     """Clone a new Email Designer email template (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/emailtemplate/clone'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3249,9 +3303,11 @@ def cloneEmailTemplate2(token, templateId, name, folderId, extra=None):
 def transitionEmailTemplate2State(token, templateId, action):
     """Transition a new Email Designer email template's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/emailtemplate/state/transition'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'contentId': templateId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3261,9 +3317,11 @@ def getEmailTemplate2UsedBy(token, templateId, pageIndex=None, pageSize=None,
                             assetType=None):
     """List assets that use a new Email Designer email template (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/emailtemplate/usedby'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'assetId': templateId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
@@ -3280,9 +3338,11 @@ def browseFragments(token, workspaceId, folderId=None, status=None, name=None,
                     sortKey=None, sortOrder=None, includeArchived=None):
     """Browse new Email Designer fragments (Asset v2) in a workspace."""
     url = _base() + '/rest/asset/v2/fragment/filter'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     params = {
         'workspaceId': workspaceId,
         'folderId': folderId,
@@ -3303,9 +3363,11 @@ def browseFragments(token, workspaceId, folderId=None, status=None, name=None,
 def getFragmentById(token, fragmentId):
     """Get a new Email Designer fragment by ID (Asset v2)."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.get(url, headers=headers, timeout=30)
     return response.json()
 
@@ -3314,9 +3376,11 @@ def createFragment(token, name, appData, settings, description=None, data=None,
                    themeId=None, status=None):
     """Create a new Email Designer fragment (Asset v2). appData carries folder placement; settings is required."""
     url = _base() + '/rest/asset/v2/fragment'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'appData': appData,
@@ -3335,9 +3399,11 @@ def updateFragment(token, fragmentId, name=None, description=None, data=None,
                    settings=None, status=None):
     """Update a new Email Designer fragment (Asset v2): name, description, data, settings, status."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}/update'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {
         'name': name,
         'description': description,
@@ -3353,9 +3419,11 @@ def updateFragment(token, fragmentId, name=None, description=None, data=None,
 def deleteFragment(token, fragmentId):
     """Delete a new Email Designer fragment (Asset v2)."""
     url = _base() + f'/rest/asset/v2/fragment/{fragmentId}/delete'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     response = requests.post(url, headers=headers, json={}, timeout=30)
     return response.json()
 
@@ -3363,9 +3431,11 @@ def deleteFragment(token, fragmentId):
 def cloneFragment(token, fragmentId, name, folderId, extra=None):
     """Clone a new Email Designer fragment (Asset v2) into a folder under a new name."""
     url = _base() + '/rest/asset/v2/fragment/clone'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     newAsset = {'name': name, 'folderId': folderId}
     if extra:
         newAsset.update(extra)
@@ -3377,9 +3447,11 @@ def cloneFragment(token, fragmentId, name, folderId, extra=None):
 def transitionFragmentState(token, fragmentId, action):
     """Transition a new Email Designer fragment's approval state (approve, unapprove, or discard)."""
     url = _base() + '/rest/asset/v2/fragment/state/transition'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'contentId': fragmentId, 'action': action}
     response = requests.post(url, headers=headers, json=body, timeout=30)
     return response.json()
@@ -3389,9 +3461,11 @@ def getFragmentUsedBy(token, fragmentId, pageIndex=None, pageSize=None,
                       assetType=None):
     """List assets that use a new Email Designer fragment (Asset v2 usedby)."""
     url = _base() + '/rest/asset/v2/fragment/usedby'
-    # Asset v2 (new Email Designer) requires an x-app-type header; the API only
-    # checks presence (any value passes), then enforces the role's permissions.
-    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'ME'}
+    # Asset v2 (new Email Designer) requires x-app-type: marketo. The VALUE
+    # matters. An absent header returns 704; an unrecognised one does not fail
+    # cleanly but routes the request elsewhere, surfacing as 611 "Downstream API
+    # returned HTTP 500" or 60050 "Content Wave Asset Not Found".
+    headers = {'Authorization': 'Bearer ' + token, 'x-app-type': 'marketo'}
     body = {'assetId': fragmentId, 'pageIndex': pageIndex, 'pageSize': pageSize,
             'type': assetType}
     body = {k: v for k, v in body.items() if v is not None}
